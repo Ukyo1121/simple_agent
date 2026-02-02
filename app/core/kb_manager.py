@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 load_dotenv(override=True)
 nest_asyncio.apply()
 
-ES_URL = os.getenv("ELASTICSEARCH_URL", "http://elasticsearch:9200")
+ES_URL = "http://localhost:9200"
 INDEX_NAME = "factory_knowledge"
 UPLOAD_DIR = "./factory_docs"
 IMAGES_DIR = "./factory_images"
@@ -71,7 +71,7 @@ def parse_pdf_with_layout(pdf_path: str, file_name: str) -> List[Document]:
             
             # 构造 Markdown 图片链接
             # 这里直接生成 URL，稍后拼接到文本里
-            img_url = f"{API_BASE_URL}/images/{image_filename}"
+            img_url = f"/images/{image_filename}"
             markdown_img = f"\n\n![示意图]({img_url})\n\n"
             
             # 存入列表: (坐标, 类型, 内容)
@@ -146,42 +146,61 @@ def delete_file_from_es(filename: str) -> bool:
 # -----------------------------------------------------------
 # 3. 入库入口
 # -----------------------------------------------------------
-# 新增：通用入库逻辑（接收本地文件路径）
 async def ingest_from_local_path(file_path: str, original_filename: str):
-    print(f"📂 开始处理本地文件: {original_filename}")
+    print(f"📂 [Debug] 开始处理本地文件: {file_path}")
 
-    # 1. 解析文档
-    documents = []
-    if original_filename.lower().endswith(".pdf"):
-        documents = parse_pdf_with_layout(file_path, original_filename)
-    else:
-        # 对于 txt, md, docx 等，使用 SimpleDirectoryReader
-        documents = SimpleDirectoryReader(input_files=[file_path]).load_data()
-        # 确保 metadata 里有文件名
-        for doc in documents:
-            doc.metadata["file_name"] = original_filename
-            doc.metadata["page_label"] = "1" # 非PDF默认为第1页
+    try:
+        # 1. 解析文档
+        documents = []
+        if original_filename.lower().endswith(".pdf"):
+            print("   [Debug] 检测到 PDF，正在调用 parse_pdf_with_layout...")
+            documents = parse_pdf_with_layout(file_path, original_filename)
+        else:
+            print("   [Debug] 检测到其他格式，调用 SimpleDirectoryReader...")
+            documents = SimpleDirectoryReader(input_files=[file_path]).load_data()
+            for doc in documents:
+                doc.metadata["file_name"] = original_filename
+                doc.metadata["page_label"] = "1"
 
-    # 2. 显存保护配置
-    Settings.embed_model = GLOBAL_EMBED_MODEL
-    Settings.chunk_size = 512
+        print(f"   [Debug] 文档解析完成，共生成 {len(documents)} 个 Document 对象。")
 
-    # 3. 存入 ES
-    print(f"⏳ 开始向量化入库 ({len(documents)} 个片段)...")
-    vector_store = ElasticsearchStore(
-        es_url=ES_URL,
-        index_name=INDEX_NAME,
-    )
-    storage_context = StorageContext.from_defaults(vector_store=vector_store)
+        # 2. 显存保护配置
+        Settings.embed_model = GLOBAL_EMBED_MODEL
+        Settings.chunk_size = 512
+
+        # 3. 测试 ES 连接性 (新增)
+        print(f"   [Debug] 正在尝试连接 Elasticsearch ({ES_URL})...")
+        try:
+            test_res = requests.get(ES_URL, timeout=3)
+            if test_res.status_code == 200:
+                print(f"   ✅ [Debug] Elasticsearch 连接成功! Version: {test_res.json().get('version', {}).get('number')}")
+            else:
+                print(f"   ⚠️ [Debug] Elasticsearch 返回非200状态: {test_res.status_code}")
+        except Exception as conn_err:
+            print(f"   ❌ [Debug] 无法连接到 Elasticsearch! 请检查 Docker 是否开启，或者地址是否写错。错误: {conn_err}")
+            raise conn_err
+
+        # 4. 存入 ES
+        print(f"⏳ [Debug] 开始初始化 VectorStoreIndex (这步可能需要下载模型或连接数据库)...")
+        vector_store = ElasticsearchStore(
+            es_url=ES_URL,
+            index_name=INDEX_NAME,
+        )
+        storage_context = StorageContext.from_defaults(vector_store=vector_store)
+        
+        print("   [Debug] 开始执行 from_documents (向量化写入)...")
+        VectorStoreIndex.from_documents(
+            documents,
+            storage_context=storage_context,
+            show_progress=True
+        )
+        
+        print(f"🎉 [Debug] {original_filename} 全部处理完成！")
+        return len(documents)
     
-    VectorStoreIndex.from_documents(
-        documents,
-        storage_context=storage_context,
-        show_progress=True
-    )
-    
-    print(f"🎉 {original_filename} 入库完成！")
-    return len(documents)
+    except Exception as inner_e:
+        print(f"❌ [Debug] ingest_from_local_path 内部发生错误: {inner_e}")
+        raise inner_e # 继续向上抛出，给 main.py 打印堆栈
 
 # 处理上传文件
 async def ingest_file(file: UploadFile):

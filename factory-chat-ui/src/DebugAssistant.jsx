@@ -5,16 +5,10 @@ import {
     Terminal, ArrowLeft, Mic, StopCircle
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-<<<<<<< HEAD
 import { API_BASE_URL } from "./config";
 
 const API_URL = `${API_BASE_URL}/chat`;
 const VOICE_API_URL = `${API_BASE_URL}/voice`;
-=======
-
-const API_URL = "http://localhost:8000/chat";
-const VOICE_API_URL = "http://localhost:8000/voice-to-text";
->>>>>>> 310e5c36683f473e43a1394ab0af9a36e2ee32d8
 
 export default function DebugAssistant({ onBack }) {
     const [threads, setThreads] = useState([]);
@@ -104,15 +98,12 @@ export default function DebugAssistant({ onBack }) {
         setMessages(prev => [...prev, { role: 'ai', content: "" }]);
         abortControllerRef.current = new AbortController();
 
-        // 关键：自动添加 [调试模式] 前缀，帮助 Agent 识别意图
-        const queryWithPrefix = `[调试模式] ${textToSend}`;
-
         try {
             const response = await fetch(API_URL, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    query: queryWithPrefix,
+                    query: textToSend,
                     thread_id: activeThreadId
                 }),
                 signal: abortControllerRef.current.signal
@@ -272,7 +263,7 @@ export default function DebugAssistant({ onBack }) {
 
                                     {/* 1. 机器故障维修 */}
                                     <button
-                                        onClick={() => handleSend("操作FANUC机器人时急停了怎么处理")}
+                                        onClick={() => handleSend("FANUC机器人开机零点校准故障报警怎么处理")}
                                         className="flex items-center gap-3 p-4 bg-white border border-gray-200 rounded-xl hover:border-purple-400 hover:shadow-md transition-all text-left group"
                                     >
                                         <div className="w-10 h-10 bg-purple-50 rounded-lg flex items-center justify-center group-hover:bg-purple-100 transition-colors">
@@ -280,7 +271,7 @@ export default function DebugAssistant({ onBack }) {
                                         </div>
                                         <div>
                                             <div className="font-semibold text-gray-700 group-hover:text-purple-700">机器故障维修</div>
-                                            <div className="text-xs text-gray-400">例：操作FANUC机器人时急停了怎么处理</div>
+                                            <div className="text-xs text-gray-400">例：FANUC机器人开机零点校准故障报警怎么处理</div>
                                         </div>
                                     </button>
 
@@ -302,28 +293,82 @@ export default function DebugAssistant({ onBack }) {
                             </div>
                         )}
 
+                        {/* 消息渲染部分 */}
                         {messages.map((msg, idx) => {
                             const isLastAiMessage = msg.role === 'ai' && idx === messages.length - 1;
+                            // 判断是否正在思考
+                            const isThinking = isLastAiMessage && isLoading && !displayedContent;
+
                             const contentToShow = isLastAiMessage && (isLoading || isTyping) ? displayedContent : msg.content;
+
                             return (
                                 <div key={idx} className={`flex gap-4 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                    {msg.role === 'ai' && <div className="w-8 h-8 rounded-full bg-purple-50 border border-purple-100 flex items-center justify-center flex-shrink-0 mt-1"><Bug size={16} className="text-purple-600" /></div>}
-                                    <div className={`max-w-[90%] p-4 rounded-2xl text-sm leading-7 shadow-sm ${msg.role === 'user' ? 'bg-purple-600 text-white rounded-br-none' : 'bg-gray-50 border border-gray-100 text-gray-800 rounded-bl-none font-mono'}`}>
-                                        <ReactMarkdown
-                                            components={{
-                                                code: ({ node, inline, className, children, ...props }) => {
-                                                    return !inline ? (
-                                                        <pre className="bg-gray-900 text-green-400 p-3 rounded-lg overflow-x-auto my-2 text-xs font-mono border border-gray-700">
-                                                            <code {...props}>{children}</code>
-                                                        </pre>
-                                                    ) : (
-                                                        <code className="bg-purple-100 text-purple-700 px-1 py-0.5 rounded text-xs" {...props}>{children}</code>
-                                                    )
-                                                }
-                                            }}
-                                        >{contentToShow}</ReactMarkdown>
+                                    {/* AI 头像 */}
+                                    {msg.role === 'ai' && (
+                                        <div className="w-8 h-8 rounded-full bg-purple-50 border border-purple-100 flex items-center justify-center flex-shrink-0 mt-1">
+                                            <Bug size={16} className={`text-purple-600 ${isThinking || isTyping ? 'animate-pulse' : ''}`} />
+                                        </div>
+                                    )}
+
+                                    {/* 消息气泡 - 已移除 font-mono，统一使用默认字体 */}
+                                    <div className={`max-w-[90%] p-4 rounded-2xl text-sm leading-7 shadow-sm transition-all duration-300 ${msg.role === 'user'
+                                        ? 'bg-purple-600 text-white rounded-br-none'
+                                        : 'bg-gray-50 border border-gray-100 text-gray-800 rounded-bl-none' // 删除了 font-mono
+                                        }`}>
+                                        {/* 思考动画状态 */}
+                                        {isThinking ? (
+                                            <div className="flex items-center gap-1.5 h-6 px-2">
+                                                {/* 紫色跳动小球 */}
+                                                <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                                                <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                                                <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce"></div>
+                                                <span className="text-xs text-gray-400 ml-2">正在分析故障现象与代码日志...</span>
+                                            </div>
+                                        ) : (
+                                            <ReactMarkdown
+                                                components={{
+                                                    // 代码块依然保持黑底绿字的专业风格
+                                                    code: ({ node, inline, className, children, ...props }) => {
+                                                        return !inline ? (
+                                                            <pre className="bg-gray-900 text-green-400 p-3 rounded-lg overflow-x-auto my-2 text-xs font-mono border border-gray-700 shadow-inner">
+                                                                <code {...props}>{children}</code>
+                                                            </pre>
+                                                        ) : (
+                                                            <code className="bg-purple-100 text-purple-700 px-1 py-0.5 rounded text-xs font-mono" {...props}>{children}</code>
+                                                        )
+                                                    },
+                                                    img: ({ node, ...props }) => {
+                                                        let imgSrc = props.src;
+                                                        if (imgSrc) {
+                                                            // 智能替换：把 localhost 或相对路径修正为服务器真实 IP
+                                                            if (imgSrc.includes('localhost:8000')) {
+                                                                imgSrc = imgSrc.replace('http://localhost:8000', API_BASE_URL);
+                                                            } else if (imgSrc.startsWith('/images')) {
+                                                                imgSrc = `${API_BASE_URL}${imgSrc}`;
+                                                            }
+                                                        }
+                                                        return (
+                                                            <img
+                                                                {...props}
+                                                                src={imgSrc}
+                                                                className="max-w-full h-auto rounded-lg shadow-md my-4 border border-gray-200 cursor-zoom-in hover:shadow-lg transition-shadow"
+                                                                onClick={() => window.open(imgSrc, '_blank')} // 点击在新窗口打开大图
+                                                            />
+                                                        );
+                                                    }
+                                                }}
+                                            >
+                                                {contentToShow}
+                                            </ReactMarkdown>
+                                        )}
                                     </div>
-                                    {msg.role === 'user' && <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0 mt-1"><User size={16} className="text-gray-500" /></div>}
+
+                                    {/* 用户头像 */}
+                                    {msg.role === 'user' && (
+                                        <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0 mt-1">
+                                            <User size={16} className="text-gray-500" />
+                                        </div>
+                                    )}
                                 </div>
                             )
                         })}

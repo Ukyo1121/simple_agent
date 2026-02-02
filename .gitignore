@@ -15,6 +15,4 @@ factory_docs/
 # 忽略本地下载的模型
 models/
 
-# 忽略镜像文件
-my_images.tar
-frontend_latest.tar
+Miniconda3-latest-Linux-x86_64.sh

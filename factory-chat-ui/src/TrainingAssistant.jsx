@@ -263,7 +263,7 @@ export default function TrainingAssistant({ onBack }) {
                                 </div>
                                 <h2 className="text-2xl font-bold text-gray-800 mb-3">开启您的操作培训</h2>
                                 <p className="text-gray-500 mb-10 max-w-md">
-                                    您可以询问具体的设备操作步骤或故障处理方法，我会通过图文并茂的方式指导您完成任务。
+                                    您可以询问具体的设备操作步骤，我会通过图文并茂的方式指导您完成任务。
                                 </p>
                             </div>
                         )}
@@ -271,18 +271,77 @@ export default function TrainingAssistant({ onBack }) {
                         {/* 消息渲染部分 */}
                         {messages.map((msg, idx) => {
                             const isLastAiMessage = msg.role === 'ai' && idx === messages.length - 1;
+                            // 判断是否正在思考（Loading 且 还没有内容显示）
+                            const isThinking = isLastAiMessage && isLoading && !displayedContent;
+
+                            // 决定显示的内容：如果是最后一条且正在加载，显示打字机内容；否则显示完整内容
                             const contentToShow = isLastAiMessage && (isLoading || isTyping) ? displayedContent : msg.content;
+
                             return (
                                 <div key={idx} className={`flex gap-4 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                    {msg.role === 'ai' && <div className="w-8 h-8 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center flex-shrink-0 mt-1"><Bot size={16} className="text-blue-600" /></div>}
-                                    <div className={`max-w-[85%] p-4 rounded-2xl text-sm leading-7 shadow-sm ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-br-none' : 'bg-white border border-gray-100 text-gray-800 rounded-bl-none'}`}>
-                                        <ReactMarkdown
-                                            components={{
-                                                img: ({ node, ...props }) => <img {...props} className="max-w-full h-auto rounded-lg shadow-md my-4 border border-gray-200 cursor-zoom-in" onClick={() => window.open(props.src, '_blank')} />
-                                            }}
-                                        >{contentToShow}</ReactMarkdown>
+                                    {/* AI 头像 */}
+                                    {msg.role === 'ai' && (
+                                        <div className="w-8 h-8 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center flex-shrink-0 mt-1">
+                                            <Bot size={16} className={`text-blue-600 ${isThinking || isTyping ? 'animate-pulse' : ''}`} />
+                                        </div>
+                                    )}
+
+                                    {/* 消息气泡 */}
+                                    <div className={`max-w-[85%] p-4 rounded-2xl text-sm leading-7 shadow-sm transition-all duration-300 ${msg.role === 'user'
+                                        ? 'bg-blue-600 text-white rounded-br-none'
+                                        : 'bg-white border border-gray-100 text-gray-800 rounded-bl-none'
+                                        }`}>
+                                        {/* --- 核心修改：如果是思考状态，显示动画；否则显示 Markdown --- */}
+                                        {isThinking ? (
+                                            <div className="flex items-center gap-1.5 h-6 px-2">
+                                                {/* 三个跳动的小球动画 */}
+                                                <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                                                <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                                                <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce"></div>
+                                                <span className="text-xs text-gray-400 ml-2">正在查阅知识库...</span>
+                                            </div>
+                                        ) : (
+                                            <ReactMarkdown
+                                                components={{
+                                                    img: ({ node, ...props }) => {
+                                                        // --- 🛠️ 核心修复逻辑开始 ---
+                                                        let imgSrc = props.src;
+
+                                                        // 如果链接存在，进行检查和替换
+                                                        if (imgSrc) {
+                                                            // 情况1：后端返回了写死的 localhost 地址 -> 替换为真实 IP
+                                                            if (imgSrc.includes('localhost:8000')) {
+                                                                imgSrc = imgSrc.replace('http://localhost:8000', API_BASE_URL);
+                                                            }
+                                                            // 情况2：后端返回了相对路径 (如 /images/xxx.png) -> 补全 IP
+                                                            else if (imgSrc.startsWith('/images')) {
+                                                                imgSrc = `${API_BASE_URL}${imgSrc}`;
+                                                            }
+                                                        }
+                                                        // --- 🛠️ 核心修复逻辑结束 ---
+
+                                                        return (
+                                                            <img
+                                                                {...props}
+                                                                src={imgSrc} // <--- 这里使用修复后的地址
+                                                                className="max-w-full h-auto rounded-lg shadow-md my-4 border border-gray-200 cursor-zoom-in hover:shadow-lg transition-shadow"
+                                                                onClick={() => window.open(imgSrc, '_blank')} // <--- 点击放大时也使用修复后的地址
+                                                            />
+                                                        );
+                                                    }
+                                                }}
+                                            >
+                                                {contentToShow}
+                                            </ReactMarkdown>
+                                        )}
                                     </div>
-                                    {msg.role === 'user' && <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0 mt-1"><User size={16} className="text-gray-500" /></div>}
+
+                                    {/* 用户头像 */}
+                                    {msg.role === 'user' && (
+                                        <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0 mt-1">
+                                            <User size={16} className="text-gray-500" />
+                                        </div>
+                                    )}
                                 </div>
                             )
                         })}
@@ -307,7 +366,7 @@ export default function TrainingAssistant({ onBack }) {
                                 value={input}
                                 onChange={(e) => setInput(e.target.value)}
                                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                                placeholder={isRecording ? "正在听你说话..." : "输入您想学习的操作内容（如：教我使用自动分拣系统的手动操作界面）..."}
+                                placeholder={isRecording ? "正在听你说话..." : "输入您想学习的操作内容（如：教我使用自动分拣系统的桁架机械手的主控界面）..."}
                                 className="w-full max-h-32 bg-transparent border-none focus:ring-0 resize-none p-3 text-gray-700 placeholder-gray-400 text-sm"
                                 rows={1}
                                 disabled={isLoading || isRecording || isProcessingVoice}

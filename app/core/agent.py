@@ -14,10 +14,10 @@ import base64
 import uuid
 
 warnings.filterwarnings("ignore")
-os.environ["TRANSFORMERS_VERBOSITY"] = "error"  # 只显示严重错误
-os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1" # 屏蔽 Windows 下的符号链接警告
-logging.getLogger("langchain").setLevel(logging.ERROR)
-logging.getLogger("langgraph").setLevel(logging.ERROR)
+# os.environ["TRANSFORMERS_VERBOSITY"] = "error"  # 只显示严重错误
+# os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1" # 屏蔽 Windows 下的符号链接警告
+# logging.getLogger("langchain").setLevel(logging.ERROR)
+# logging.getLogger("langgraph").setLevel(logging.ERROR)
 
 from typing import Annotated, Literal, TypedDict
 
@@ -46,7 +46,7 @@ UNANSWERED_FILE = "unanswered_questions.json"
 # 定义本地图片存储路径
 IMAGES_DIR = "./factory_images"
 
-es_url = os.getenv("ELASTICSEARCH_URL", "http://elasticsearch:9200") 
+es_url = "http://localhost:9200"
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 
 # ==============================================================================
@@ -62,7 +62,7 @@ Settings.llm = None
 
 # 配置 Reranker (核心竞争力: 重排序)
 reranker = FlagEmbeddingReranker(
-    model="models/hub/models--BAAI--bge-reranker-v2-m3", 
+    model="models/hub/models--BAAI--bge-reranker-base", 
     top_n=5,
     use_fp16=True  # 必须开启半精度，进一步省显存
 )

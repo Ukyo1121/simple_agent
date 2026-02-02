@@ -108,11 +108,36 @@ def delete_file(filename: str):
 
 @app.post("/knowledge/upload")
 async def upload_file(file: UploadFile = File(...)):
+    print(f"\n📥 [Debug] 收到文件上传请求: filename={file.filename}, content_type={file.content_type}")
+    
+    # 1. 检查 python-multipart 是否正常工作
     try:
+        file_size = 0
+        # 尝试读取一点点数据，测试 UploadFile 对象是否健康
+        content_sample = await file.read(1024)
+        file_size = len(content_sample)
+        await file.seek(0) # 读完记得指针归位
+        print(f"✅ [Debug] 文件对象读取正常，前1KB已读取。")
+    except Exception as e:
+        print(f"❌ [Debug] UploadFile 对象损坏 (可能是 python-multipart 未安装或版本不兼容): {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail="文件接收失败，请检查服务器 python-multipart 依赖")
+
+    try:
+        # 2. 调用核心逻辑
+        print("🚀 [Debug] 正在调用 kb_manager.ingest_file ...")
         num = await ingest_file(file)
+        print(f"✅ [Debug]入库成功，片段数: {num}")
         return {"message": "入库成功", "chunks": num}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # 3. 捕获核心逻辑的所有报错，并打印堆栈！
+        print(f"❌ [Debug] 知识库入库过程发生致命错误: {type(e).__name__} - {e}")
+        print("-" * 60)
+        import traceback
+        traceback.print_exc()  # <--- 这行代码会把真正的报错打印在黑色窗口里
+        print("-" * 60)
+        raise HTTPException(status_code=500, detail=f"后端处理失败: {str(e)}")
 
 @app.get("/admin/unanswered_questions")
 def get_unanswered_questions():
