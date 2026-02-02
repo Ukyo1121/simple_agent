@@ -36,10 +36,12 @@ export default function TrainingAssistant({ onBack }) {
     useEffect(() => {
         if (!isInitializedRef.current) {
             isInitializedRef.current = true;
+            // 如果本地没有 threads，创建一个新的
+            // 实际项目中，这里应该先调用 /threads 列表接口(如果你做了的话)
+            // 这里暂时保持你原有的逻辑，但如果用户手动刷新页面，我们尝试加载当前 ID
             if (threads.length === 0) createNewThread();
         }
     }, []);
-
     // 自动滚动
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -67,6 +69,22 @@ export default function TrainingAssistant({ onBack }) {
         }
     }, [streamBuffer, displayedContent, isLoading]);
 
+    // 加载历史记录的函数
+    const loadHistory = async (threadId) => {
+        setIsLoading(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/history/${threadId}`);
+            const data = await res.json();
+            if (data.history) {
+                setMessages(data.history); // 直接覆盖当前消息列表
+            }
+        } catch (err) {
+            console.error("加载历史记录失败", err);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     const createNewThread = (title = "新会话") => {
         const newId = uuidv4();
         const newThread = { id: newId, title: title, history: [] };
@@ -81,8 +99,9 @@ export default function TrainingAssistant({ onBack }) {
         const targetThread = threads.find(t => t.id === id);
         if (targetThread) {
             setActiveThreadId(id);
-            setMessages(targetThread.history || []);
             resetTyper();
+            // 调用后端加载历史
+            loadHistory(id);
         }
     };
 

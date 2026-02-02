@@ -15,7 +15,7 @@ from faster_whisper import WhisperModel
 from app.models import ChatRequest
 from app.core.agent import chat_stream, UNANSWERED_FILE
 from app.core.kb_manager import list_files_in_es, delete_file_from_es, ingest_file, ingest_from_local_path, UPLOAD_DIR, IMAGES_DIR
-
+from app.core.agent import chat_stream, get_history
 # ========== 新增：导入视频管理模块 ==========
 from app.core import video_manager
 
@@ -377,3 +377,15 @@ async def update_training_video_metadata(
     except Exception as e:
         print(f"更新视频信息失败: {e}")
         raise HTTPException(status_code=500, detail=f"更新失败: {str(e)}")
+
+@app.get("/history/{thread_id}")
+async def fetch_history(thread_id: str):
+    """
+    前端加载页面时调用此接口，恢复历史记录
+    """
+    try:
+        history = await get_history(thread_id)
+        return {"history": history}
+    except Exception as e:
+        print(f"获取历史记录失败: {e}")
+        return JSONResponse(status_code=500, content={"error": str(e)})

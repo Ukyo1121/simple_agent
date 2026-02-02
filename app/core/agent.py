@@ -37,6 +37,9 @@ from langgraph.checkpoint.memory import MemorySaver
 from typing import TypedDict, Annotated, Sequence
 from langgraph.graph import add_messages
 from langgraph.prebuilt import ToolNode
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from psycopg_pool import AsyncConnectionPool
+from contextlib import asynccontextmanager
 
 # 加载环境变量
 from dotenv import load_dotenv
@@ -48,6 +51,10 @@ IMAGES_DIR = "./factory_images"
 
 es_url = "http://localhost:9200"
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
+DB_URI = os.getenv("DB_URI", "postgresql://admin:factory_pass@localhost:5432/factory_agent")
+# 创建连接池
+pool = AsyncConnectionPool(conninfo=DB_URI, max_size=20, open=False)
+checkpointer = AsyncPostgresSaver(pool)
 
 # ==============================================================================
 # 1. 准备 RAG 引擎
@@ -504,13 +511,30 @@ workflow.add_conditional_edges(
 workflow.add_edge("tools", "agent")
 
 # 编译图
-memory = MemorySaver()
-graph = workflow.compile(checkpointer=memory)
+graph_structure = workflow
 
 print("🤖 工厂智能Agent已启动！")
 
+# ==============================================================================
+# 4. 初始化数据库 & 获取 Graph 实例
+# ==============================================================================
+async def get_graph():
+    """
+    用于 FastAPI 启动时或首次调用时初始化数据库表结构
+    """
+    if pool.closed:
+        await pool.open()
+        await pool.wait()
+    
+    # 首次运行时自动创建 checkpoints 表
+    await checkpointer.setup()
+    
+    # 编译 Graph，绑定 Postgres checkpointer
+    return graph_structure.compile(checkpointer=checkpointer)
+
 # 封装一个异步生成器函数，用于流式输出
 async def chat_stream(message: str, thread_id: str):
+    graph = await get_graph()
     config = {"configurable": {"thread_id": thread_id}}
     has_yielded = False # 标记是否已经向前端发送过内容
     
@@ -553,10 +577,44 @@ async def chat_stream(message: str, thread_id: str):
                         
                         has_yielded = True
                         yield last_msg.content
-        # ========================================================================
 
+# 获取历史记录的函数 (供前端加载使用)
+async def get_history(thread_id: str):
+    """
+    从 PostgreSQL 读取指定 thread_id 的历史聊天记录
+    """
+    graph = await get_graph()
+    config = {"configurable": {"thread_id": thread_id}}
+    
+    # 获取当前状态
+    state_snapshot = await graph.aget_state(config)
+    
+    if not state_snapshot.values:
+        return []
+    
+    messages = state_snapshot.values.get("messages", [])
+    
+    # 将 LangChain Message 对象转换为前端可读的 JSON 格式
+    formatted_history = []
+    for msg in messages:
+        role = "user" if isinstance(msg, HumanMessage) else "ai"
+        # 过滤掉 ToolMessage，只显示用户和 AI 的对话
+        if isinstance(msg, (HumanMessage, AIMessage)) and msg.content:
+             # 如果 AI 消息是空的 (可能是在调用工具)，跳过
+            if role == "ai" and not msg.content:
+                continue
+            # 如果是 XML 乱码，跳过
+            if "<tool_call>" in str(msg.content):
+                continue
+                
+            formatted_history.append({
+                "role": role,
+                "content": msg.content
+            })
+            
+    return formatted_history
 # ==============================================================================
-# 4. 交互式运行
+# 5. 交互式运行
 # ==============================================================================
 def main():
     print("\n你可以开始提问了 (输入 'q' 退出)")
