@@ -7,7 +7,7 @@ from typing import Optional
 import pandas as pd
 import io
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from faster_whisper import WhisperModel
@@ -15,6 +15,9 @@ from faster_whisper import WhisperModel
 from app.models import ChatRequest
 from app.core.agent import chat_stream, UNANSWERED_FILE
 from app.core.kb_manager import list_files_in_es, delete_file_from_es, ingest_file, ingest_from_local_path, UPLOAD_DIR, IMAGES_DIR
+
+# ========== 新增：导入视频管理模块 ==========
+from app.core import video_manager
 
 # --------------------------------------------------------------------------
 # 1. 初始化本地语音模型 (Faster-Whisper)
@@ -35,6 +38,10 @@ app = FastAPI(title="工厂智能助手 API", version="1.0")
 
 app.mount("/files", StaticFiles(directory=UPLOAD_DIR), name="files")
 app.mount("/images", StaticFiles(directory=IMAGES_DIR), name="images")
+
+# ========== 新增：挂载视频和缩略图静态目录 ==========
+app.mount("/videos", StaticFiles(directory=video_manager.VIDEOS_DIR), name="videos")
+app.mount("/thumbnails", StaticFiles(directory=video_manager.THUMBNAILS_DIR), name="thumbnails")
 
 app.add_middleware(
     CORSMiddleware,
@@ -275,3 +282,98 @@ async def upload_lifecycle_data(file: UploadFile = File(...)):
     except Exception as e:
         print(f"文件解析错误: {e}")
         return {"error": f"解析失败: {str(e)}"}
+
+
+# ==========================================================================
+# 6. 培训视频管理接口 (新增)
+# ==========================================================================
+
+@app.get("/training-videos")
+def get_training_videos():
+    """获取所有培训视频列表"""
+    try:
+        return video_manager.list_videos()
+    except Exception as e:
+        print(f"获取视频列表失败: {e}")
+        raise HTTPException(status_code=500, detail="获取视频列表失败")
+
+@app.post("/training-videos/upload")
+async def upload_training_video(file: UploadFile = File(...)):
+    """
+    上传培训视频
+    """
+    print(f"\n📹 [Debug] 收到视频上传请求: filename={file.filename}, content_type={file.content_type}")
+    
+    try:
+        # 调用核心逻辑保存视频
+        video_metadata = video_manager.save_video(file.file, file.filename)
+        
+        print(f"✅ [Debug] 视频上传成功: {video_metadata['title']}")
+        return JSONResponse(
+            status_code=200,
+            content={"message": "视频上传成功", "video": video_metadata}
+        )
+        
+    except ValueError as e:
+        # 业务逻辑错误（如文件格式不支持、文件过大）
+        print(f"❌ [Debug] 视频上传被拒绝: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    
+    except Exception as e:
+        # 系统错误
+        print(f"❌ [Debug] 视频上传失败: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"上传失败: {str(e)}")
+
+@app.get("/training-videos/{video_id}")
+def get_training_video(video_id: str):
+    """获取单个视频的元数据"""
+    try:
+        video = video_manager.get_video_by_id(video_id)
+        if video:
+            return video
+        raise HTTPException(status_code=404, detail="视频不存在")
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"获取视频信息失败: {e}")
+        raise HTTPException(status_code=500, detail="获取视频信息失败")
+
+@app.delete("/training-videos/{video_id}")
+def delete_training_video(video_id: str):
+    """删除视频"""
+    try:
+        if video_manager.delete_video(video_id):
+            return JSONResponse(
+                status_code=200,
+                content={"message": "视频删除成功"}
+            )
+        raise HTTPException(status_code=404, detail="视频不存在")
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"删除视频失败: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"删除失败: {str(e)}")
+
+@app.put("/training-videos/{video_id}")
+async def update_training_video_metadata(
+    video_id: str, 
+    title: Optional[str] = Form(None), 
+    description: Optional[str] = Form(None)
+):
+    """更新视频元数据（标题、描述）"""
+    try:
+        if video_manager.update_video_metadata(video_id, title, description):
+            return JSONResponse(
+                status_code=200,
+                content={"message": "更新成功"}
+            )
+        raise HTTPException(status_code=404, detail="视频不存在")
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"更新视频信息失败: {e}")
+        raise HTTPException(status_code=500, detail=f"更新失败: {str(e)}")

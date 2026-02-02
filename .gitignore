@@ -16,3 +16,6 @@ factory_docs/
 models/
 
 Miniconda3-latest-Linux-x86_64.sh
+
+training_thumbnails/
+training_videos/

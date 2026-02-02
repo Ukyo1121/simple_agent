@@ -2,9 +2,11 @@ import { useState } from 'react';
 import {
     GraduationCap, Archive, BarChart2, Bug,
     Database, ClipboardList, ArrowLeft, Factory,
-    ArrowRight, Activity, Server, ShieldCheck, Cpu, Sparkles
+    ArrowRight, Activity, Server, ShieldCheck, Cpu, Sparkles,
+    Video, MessageSquare
 } from 'lucide-react';
 import TrainingAssistant from './TrainingAssistant';
+import TrainingVideoManager from './TrainingVideoManager';
 import DebugAssistant from './DebugAssistant';
 import LifecycleDashboard from './components/LifecycleDashboard';
 import KnowledgeModal from './components/KnowledgeModal';
@@ -58,7 +60,7 @@ export default function App() {
                         textColor="text-blue-600"
                         hoverShadow="hover:shadow-blue-200"
                         delay="0"
-                        onClick={() => setCurrentModule('training')}
+                        onClick={() => setCurrentModule('training-menu')}
                     />
 
                     {/* 2. 采集助手 */}
@@ -125,7 +127,85 @@ export default function App() {
         </div>
     );
 
-    // --- 2. 采集助手二级菜单 ---
+    // --- 2. 培训助手二级菜单 (新增) ---
+    const renderTrainingMenu = () => (
+        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-purple-50/40 relative overflow-hidden flex flex-col items-center justify-center p-8">
+            {/* 背景效果 */}
+            <div className="absolute inset-0 bg-[linear-gradient(to_right,#8882_1px,transparent_1px),linear-gradient(to_bottom,#8882_1px,transparent_1px)] bg-[size:64px_64px]"></div>
+            <div className="absolute top-1/4 right-1/4 w-[400px] h-[400px] bg-blue-200/50 rounded-full blur-[100px]"></div>
+            <div className="absolute bottom-1/4 left-1/4 w-[400px] h-[400px] bg-purple-200/50 rounded-full blur-[100px]"></div>
+
+            <button
+                onClick={() => setCurrentModule('home')}
+                className="absolute top-8 left-8 z-20 flex items-center gap-3 px-5 py-2.5 bg-white/80 backdrop-blur-sm rounded-full border border-slate-200 text-slate-600 hover:text-blue-600 hover:border-blue-300 hover:shadow-md transition-all group"
+            >
+                <ArrowLeft size={18} className="group-hover:-translate-x-1 transition-transform" />
+                <span className="font-semibold">返回主页</span>
+            </button>
+
+            <div className="relative z-10 text-center mb-16 animate-fade-in-down">
+                <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl mx-auto flex items-center justify-center mb-6 shadow-lg shadow-blue-200">
+                    <GraduationCap size={36} className="text-white" />
+                </div>
+                <h2 className="text-5xl font-black text-slate-800 mb-4 tracking-tight">
+                    <span className="bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-purple-600">培训助手</span>
+                </h2>
+                <p className="text-slate-600 mt-4 text-lg">请选择您需要的培训服务类型</p>
+            </div>
+
+            <div className="relative z-10 grid grid-cols-1 md:grid-cols-2 gap-8 max-w-5xl w-full animate-fade-in-up">
+                {/* 智能问答卡片 */}
+                <button
+                    onClick={() => setCurrentModule('training-chat')}
+                    className="group relative flex flex-col items-center p-10 bg-white/80 backdrop-blur-sm rounded-3xl border border-slate-200 shadow-lg hover:shadow-xl hover:-translate-y-2 transition-all duration-300 text-center overflow-hidden"
+                >
+                    <div className="absolute inset-0 bg-gradient-to-br from-blue-50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+
+                    <div className="relative z-10 w-20 h-20 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl flex items-center justify-center text-white mb-6 shadow-lg shadow-blue-200 group-hover:scale-105 transition-transform">
+                        <MessageSquare size={32} />
+                    </div>
+
+                    <h3 className="relative text-2xl font-bold text-slate-800 mb-3">智能问答</h3>
+                    <p className="relative text-slate-600 leading-relaxed mb-8">
+                        与 AI 助手对话，获取图文并茂的操作指导。
+                        <br />
+                        支持设备操作、故障排查等各类培训问题。
+                    </p>
+
+                    <div className="relative mt-auto flex items-center gap-2 text-blue-600 font-semibold group-hover:gap-3 transition-all">
+                        <span>开始对话</span>
+                        <ArrowRight size={18} />
+                    </div>
+                </button>
+
+                {/* 视频库卡片 */}
+                <button
+                    onClick={() => setCurrentModule('training-video')}
+                    className="group relative flex flex-col items-center p-10 bg-white/80 backdrop-blur-sm rounded-3xl border border-slate-200 shadow-lg hover:shadow-xl hover:-translate-y-2 transition-all duration-300 text-center overflow-hidden"
+                >
+                    <div className="absolute inset-0 bg-gradient-to-br from-purple-50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+
+                    <div className="relative z-10 w-20 h-20 bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl flex items-center justify-center text-white mb-6 shadow-lg shadow-purple-200 group-hover:scale-105 transition-transform">
+                        <Video size={32} />
+                    </div>
+
+                    <h3 className="relative text-2xl font-bold text-slate-800 mb-3">培训视频库</h3>
+                    <p className="relative text-slate-600 leading-relaxed mb-8">
+                        上传和查看培训视频资料。
+                        <br />
+                        支持在线播放、搜索和管理视频文件。
+                    </p>
+
+                    <div className="relative mt-auto flex items-center gap-2 text-purple-600 font-semibold group-hover:gap-3 transition-all">
+                        <span>进入视频库</span>
+                        <ArrowRight size={18} />
+                    </div>
+                </button>
+            </div>
+        </div>
+    );
+
+    // --- 3. 采集助手二级菜单 ---
     const renderCollectionMenu = () => (
         <div className="min-h-screen bg-gradient-to-br from-slate-50 via-orange-50/30 to-amber-50/40 relative overflow-hidden flex flex-col items-center justify-center p-8">
             {/* 背景效果 */}
@@ -207,10 +287,14 @@ export default function App() {
         </div>
     );
 
-    // --- 3. 路由分发 ---
+    // --- 4. 路由分发 ---
     switch (currentModule) {
-        case 'training':
-            return <TrainingAssistant onBack={() => setCurrentModule('home')} />;
+        case 'training-menu':
+            return renderTrainingMenu();
+        case 'training-chat':
+            return <TrainingAssistant onBack={() => setCurrentModule('training-menu')} />;
+        case 'training-video':
+            return <TrainingVideoManager onBack={() => setCurrentModule('training-menu')} />;
         case 'debug':
             return <DebugAssistant onBack={() => setCurrentModule('home')} />;
         case 'monitoring':
