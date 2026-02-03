@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
     GraduationCap, Archive, BarChart2, Bug,
     Database, ClipboardList, ArrowLeft, Factory,
     ArrowRight, Activity, Server, ShieldCheck, Cpu, Sparkles,
-    Video, MessageSquare
+    Video, MessageSquare, User, LogOut, Loader2
 } from 'lucide-react';
 import TrainingAssistant from './TrainingAssistant';
 import TrainingVideoManager from './TrainingVideoManager';
@@ -11,12 +11,135 @@ import DebugAssistant from './DebugAssistant';
 import LifecycleDashboard from './components/LifecycleDashboard';
 import KnowledgeModal from './components/KnowledgeModal';
 import UnansweredModal from './components/UnansweredModal';
+import { API_BASE_URL } from './config';
 
 export default function App() {
     const [currentModule, setCurrentModule] = useState('home');
     const [isKbOpen, setIsKbOpen] = useState(false);
     const [isUnansweredOpen, setIsUnansweredOpen] = useState(false);
+    const [user, setUser] = useState(null);
+    const [usernameInput, setUsernameInput] = useState("");
+    const [passwordInput, setPasswordInput] = useState(""); // 新增密码状态
+    const [loginError, setLoginError] = useState("");       // 新增错误提示
+    const [isLoading, setIsLoading] = useState(false); // 新增：加载状态
 
+    // 检查本地登录状态
+    useEffect(() => {
+        const savedUser = localStorage.getItem("factory_user");
+        if (savedUser) {
+            try {
+                setUser(JSON.parse(savedUser));
+            } catch (e) {
+                localStorage.removeItem("factory_user");
+            }
+        }
+    }, []);
+
+    const handleLogin = async (e) => {
+        if (e) e.preventDefault();
+
+        if (!usernameInput.trim() || !passwordInput.trim()) {
+            setLoginError("请输入用户名和密码");
+            return;
+        }
+
+        setIsLoading(true);
+        setLoginError("");
+
+        try {
+            const res = await fetch(`${API_BASE_URL}/login`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json' // 必须加上这个头，后端才知道是 JSON
+                },
+                body: JSON.stringify({
+                    username: usernameInput,
+                    password: passwordInput
+                })
+            });
+
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({ detail: "登录失败" }));
+                // 处理 FastAPI 可能返回的数组格式错误，也处理字符串格式
+                const msg = Array.isArray(errData.detail)
+                    ? errData.detail.map(e => `${e.loc.join('.')}: ${e.msg}`).join(", ")
+                    : errData.detail;
+                throw new Error(msg || `请求失败: ${res.status}`);
+            }
+
+            const data = await res.json();
+            const userInfo = data.user || data;
+
+            setUser(userInfo);
+            localStorage.setItem("factory_user", JSON.stringify(userInfo));
+            setLoginError("");
+        } catch (err) {
+            console.error("Login Error:", err);
+            setLoginError(err.message || "无法连接到服务器");
+        } finally {
+            setIsLoading(false);
+        }
+    };
+    const handleLogout = () => {
+        setUser(null);
+        localStorage.removeItem("factory_user");
+        setCurrentModule('home');
+        setPasswordInput(""); // 清空密码
+    };
+
+    // --- 登录 UI ---
+    if (!user) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-slate-50">
+                <div className="bg-white p-8 rounded-xl shadow-lg w-96 animate-fade-in-up">
+                    <h2 className="text-2xl font-bold mb-6 text-center text-slate-800">🏭 智能分拣助手</h2>
+
+                    <form onSubmit={handleLogin}> {/* 包裹在 form 中以支持回车提交 */}
+                        <div className="mb-4">
+                            <input
+                                type="text"
+                                placeholder="用户名"
+                                className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                value={usernameInput}
+                                onChange={(e) => setUsernameInput(e.target.value)}
+                                disabled={isLoading}
+                            />
+                        </div>
+
+                        <div className="mb-6">
+                            <input
+                                type="password"
+                                placeholder="密码"
+                                className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                value={passwordInput}
+                                onChange={(e) => setPasswordInput(e.target.value)}
+                                disabled={isLoading}
+                            />
+                        </div>
+
+                        {loginError && (
+                            <div className="mb-4 text-sm text-red-500 bg-red-50 p-2 rounded flex items-center gap-2">
+                                <Bug size={14} /> {loginError}
+                            </div>
+                        )}
+
+                        <button
+                            type="submit"
+                            disabled={isLoading}
+                            className={`w-full p-3 rounded-lg font-medium transition-colors flex items-center justify-center gap-2
+                                ${isLoading ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'} text-white`}
+                        >
+                            {isLoading ? <Loader2 className="animate-spin" size={20} /> : "安全登录"}
+                        </button>
+                    </form>
+
+                    <p className="text-center text-xs text-gray-400 mt-4">
+                        内部系统，请联系管理员获取账号
+                    </p>
+                </div>
+            </div>
+        );
+    }
     // --- 1. 渲染主页 ---
     const renderHome = () => (
         <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/40 relative overflow-hidden font-sans selection:bg-blue-200">
@@ -26,6 +149,20 @@ export default function App() {
             {/* 柔和光晕 */}
             <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-blue-200/40 rounded-full blur-[120px] -translate-y-1/4 translate-x-1/4"></div>
             <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-indigo-200/40 rounded-full blur-[120px] translate-y-1/4 -translate-x-1/4"></div>
+
+            {/* 用户信息与退出按钮 */}
+            <div className="absolute top-6 right-6 z-50 flex items-center gap-4 animate-fade-in">
+                <div className="flex items-center gap-2 bg-white/60 backdrop-blur px-3 py-1.5 rounded-full border border-slate-200 shadow-sm">
+                    <User size={16} className="text-slate-500" />
+                    <span className="text-sm font-semibold text-slate-700">{user.username || "Admin"}</span>
+                </div>
+                <button
+                    onClick={handleLogout}
+                    className="flex items-center gap-2 px-3 py-1.5 bg-red-50 text-red-600 rounded-full hover:bg-red-100 transition-colors text-sm font-medium"
+                >
+                    <LogOut size={14} /> 退出
+                </button>
+            </div>
 
             <div className="relative z-10 flex flex-col items-center justify-center min-h-screen p-6 md:p-12">
                 {/* 顶部标题区 */}
@@ -292,7 +429,7 @@ export default function App() {
         case 'training-menu':
             return renderTrainingMenu();
         case 'training-chat':
-            return <TrainingAssistant onBack={() => setCurrentModule('training-menu')} />;
+            return <TrainingAssistant onBack={() => setCurrentModule('training-menu')} userId={user.user_id} />;
         case 'training-video':
             return <TrainingVideoManager onBack={() => setCurrentModule('training-menu')} />;
         case 'debug':

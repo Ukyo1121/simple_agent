@@ -40,6 +40,9 @@ from langgraph.prebuilt import ToolNode
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from psycopg_pool import AsyncConnectionPool
 from contextlib import asynccontextmanager
+from passlib.context import CryptContext
+# 配置密码哈希算法
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # 加载环境变量
 from dotenv import load_dotenv
@@ -52,8 +55,20 @@ IMAGES_DIR = "./factory_images"
 es_url = "http://localhost:9200"
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 DB_URI = os.getenv("DB_URI", "postgresql://admin:factory_pass@localhost:5432/factory_agent")
-# 创建连接池
-pool = AsyncConnectionPool(conninfo=DB_URI, max_size=20, open=False)
+
+# 创建连接池（添加更多配置参数）
+pool = AsyncConnectionPool(
+    conninfo=DB_URI,
+    min_size=1,          # 最小连接数
+    max_size=10,         # 最大连接数（降低以避免资源占用）
+    open=False,          # 延迟打开
+    timeout=10,          # 连接超时时间（秒）
+    max_waiting=0,       # 不排队等待连接
+    max_lifetime=3600,   # 连接最大生命周期（1小时）
+    max_idle=600,        # 空闲连接最大时间（10分钟）
+    kwargs={"autocommit": True} # 建议开启 autocommit
+)
+
 checkpointer = AsyncPostgresSaver(pool)
 
 # ==============================================================================
@@ -518,65 +533,105 @@ print("🤖 工厂智能Agent已启动！")
 # ==============================================================================
 # 4. 初始化数据库 & 获取 Graph 实例
 # ==============================================================================
+# 用于缓存已编译的 graph，避免重复初始化
+_compiled_graph = None
+_db_initialized = False
+
 async def get_graph():
     """
-    用于 FastAPI 启动时或首次调用时初始化数据库表结构
+    返回编译后的 Graph 实例
     """
+    global _compiled_graph
+    
+    # 如果已经编译过，直接返回
+    if _compiled_graph is not None:
+        return _compiled_graph
+    
+    print("🏗️  [Graph] 正在编译 StateGraph...")
+    
+    # 确保连接池已打开
     if pool.closed:
         await pool.open()
-        await pool.wait()
-    
-    # 首次运行时自动创建 checkpoints 表
-    await checkpointer.setup()
-    
-    # 编译 Graph，绑定 Postgres checkpointer
-    return graph_structure.compile(checkpointer=checkpointer)
 
-# 封装一个异步生成器函数，用于流式输出
+    # 编译 Graph
+    _compiled_graph = graph_structure.compile(checkpointer=checkpointer)
+    
+    print("✅ [Graph] 编译完成")
+    return _compiled_graph
+
+# =============================================================================
+# chat_stream 函数
+# =============================================================================
+
 async def chat_stream(message: str, thread_id: str):
-    graph = await get_graph()
-    config = {"configurable": {"thread_id": thread_id}}
-    has_yielded = False # 标记是否已经向前端发送过内容
-    
-    async for event in graph.astream_events(
-        {"messages": [HumanMessage(content=message)]}, 
-        config=config,
-        version="v1"
-    ):
-        # 1. 捕获流式 Token (LLM 正常生成时)
-        if event["event"] == "on_chat_model_stream":
-             content = event["data"]["chunk"].content
-             if content:
-                 if "<tool_call>" in content or "<function=" in content: continue
-                 has_yielded = True
-                 yield content
+    """
+    流式对话接口
+    """
+    try:
+        # 获取 graph（会自动初始化数据库）
+        graph = await get_graph()
+        config = {"configurable": {"thread_id": thread_id}}
+        has_yielded = False
         
-        # 2. 捕获非流式最终结果 (LLM 一次性生成时)
-        elif event["event"] == "on_chat_model_end" and not has_yielded:
-            output = event["data"]["output"]
-            if hasattr(output, "generations") and output.generations:
-                msg = output.generations[0][0].message
-                if isinstance(msg, BaseMessage) and msg.type == "ai" and msg.content:
-                    if not msg.tool_calls:
-                        if "<tool_call>" in msg.content: continue
-                        has_yielded = True
-                        yield msg.content
+        print(f"💬 [Chat] 开始处理消息: thread_id={thread_id}")
+        
+        async for event in graph.astream_events(
+            {"messages": [HumanMessage(content=message)]}, 
+            config=config,
+            version="v1"
+        ):
+            # ------------------------------------------------------
+            # 1. 捕获大模型的流式输出 (正常对话)
+            # ------------------------------------------------------
+            if event["event"] == "on_chat_model_stream":
+                content = event["data"]["chunk"].content
+                if content:
+                    # 过滤 XML 标签
+                    if "<tool_call>" in content or "<function=" in content: 
+                        continue
+                    has_yielded = True
+                    yield content
+            
+            # ------------------------------------------------------
+            # 2. 捕获大模型非流式结果
+            # ------------------------------------------------------
+            elif event["event"] == "on_chat_model_end" and not has_yielded:
+                output = event["data"]["output"]
+                if hasattr(output, "generations") and output.generations:
+                    msg = output.generations[0][0].message
+                    if isinstance(msg, BaseMessage) and msg.type == "ai" and msg.content:
+                        if not msg.tool_calls:
+                            has_yielded = True
+                            yield msg.content
 
-        # 3. 捕获系统拦截/硬编码消息] 
-        # 当 call_model 直接 return AIMessage (跳过大模型) 时，触发的是 on_chain_end
-        elif event["event"] == "on_chain_end" and event["name"] == "agent":
-            # 只有当之前没有从 LLM 拿到数据时，才检查这里的输出
-            if not has_yielded:
-                outputs = event["data"].get("output")
-                if outputs and isinstance(outputs, dict) and "messages" in outputs:
-                    last_msg = outputs["messages"][-1]
-                    # 确保是 AI 消息且有内容
-                    if isinstance(last_msg, AIMessage) and last_msg.content:
-                        # 再次检查是不是 XML 乱码（双重保险）
-                        if "<tool_call>" in last_msg.content: continue
+            # ------------------------------------------------------
+            # 3. 捕获 Agent 节点的直接输出
+            # ------------------------------------------------------
+            elif event["event"] == "on_chain_end" and event["name"] == "agent":
+                # 获取节点返回的数据
+                data = event["data"].get("output")
+                # 检查数据格式是否符合 {"messages": [...]}
+                if data and isinstance(data, dict) and "messages" in data:
+                    last_msg = data["messages"][-1]
+                    
+                    # 只有当：
+                    # 1. 之前没有输出过内容 (避免和流式输出重复)
+                    # 2. 是 AI 消息
+                    # 3. 有内容
+                    if (not has_yielded and 
+                        isinstance(last_msg, AIMessage) and 
+                        last_msg.content):
                         
+                        print(f"⚡ [Chat] 捕获到系统拦截消息: {last_msg.content[:20]}...")
                         has_yielded = True
                         yield last_msg.content
+
+    except Exception as e:
+        error_msg = f"\n\n❌ 对话处理失败: {str(e)}\n"
+        print(f"❌ [Chat] {error_msg}")
+        import traceback
+        traceback.print_exc()
+        yield error_msg
 
 # 获取历史记录的函数 (供前端加载使用)
 async def get_history(thread_id: str):
@@ -613,35 +668,204 @@ async def get_history(thread_id: str):
             })
             
     return formatted_history
-# ==============================================================================
-# 5. 交互式运行
-# ==============================================================================
-def main():
-    print("\n你可以开始提问了 (输入 'q' 退出)")
-    
-    # 定义线程 ID，LangGraph 通过这个 ID 来区分不同的对话历史
-    # 如果你想开启一段全新的对话（忘记过去），只需要换一个 ID (例如 "thread_2")
-    config = {"configurable": {"thread_id": "factory_user_001"}}
-    
-    while True:
-        user_input = input("\n请提问: ")
-        if user_input.lower() == 'q':
-            break
-            
-        print("\n[Agent 思考中...]")
 
-        # 我们只把当前最新的这一句话传给 Agent
-        # Agent 会根据 config 里的 thread_id 自动去 memory 里查找之前的聊天记录
-        inputs = {"messages": [("user", user_input)]}
+async def init_default_user():
+    """初始化一个默认管理员账号，防止没法登录"""
+    default_user = "admin"
+    default_pass = "admin123" # 默认密码
+    
+    user_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, default_user))
+    # 加密密码
+    hashed_pw = pwd_context.hash(default_pass)
+    
+    async with pool.connection() as conn:
+        async with conn.cursor() as cur:
+            # 如果不存在才插入
+            await cur.execute("""
+                INSERT INTO users (user_id, username, password_hash) 
+                VALUES (%s, %s, %s) 
+                ON CONFLICT (username) DO NOTHING
+            """, (user_id, default_user, hashed_pw))
+            print(f"👤 [System] 默认管理员已就绪: 用户名={default_user}, 密码={default_pass}")
+async def init_database():
+    """
+    系统启动时运行：创建所有必要的表结构，并初始化管理员
+    """
+    print("🛠️ [Database] 正在检查并初始化表结构...")
+    
+    async with pool.connection() as conn:
+        await conn.set_autocommit(True)
+        async with conn.cursor() as cur:
+            # --- 1. LangGraph 核心表 ---
+            await cur.execute("""
+                CREATE TABLE IF NOT EXISTS checkpoints (
+                    thread_id TEXT NOT NULL,
+                    checkpoint_ns TEXT NOT NULL DEFAULT '',
+                    checkpoint_id TEXT NOT NULL,
+                    parent_checkpoint_id TEXT,
+                    type TEXT,
+                    checkpoint JSONB NOT NULL,
+                    metadata JSONB NOT NULL DEFAULT '{}',
+                    PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id)
+                );
+            """)
+            await cur.execute("""
+                CREATE TABLE IF NOT EXISTS checkpoint_blobs (
+                    thread_id TEXT NOT NULL,
+                    checkpoint_ns TEXT NOT NULL DEFAULT '',
+                    channel TEXT NOT NULL,
+                    version TEXT NOT NULL,
+                    type TEXT NOT NULL,
+                    blob BYTEA,
+                    PRIMARY KEY (thread_id, checkpoint_ns, channel, version)
+                );
+            """)
+            await cur.execute("""
+                CREATE TABLE IF NOT EXISTS checkpoint_writes (
+                    thread_id TEXT NOT NULL,
+                    checkpoint_ns TEXT NOT NULL DEFAULT '',
+                    checkpoint_id TEXT NOT NULL,
+                    task_id TEXT NOT NULL,
+                    idx INTEGER NOT NULL,
+                    channel TEXT NOT NULL,
+                    type TEXT,
+                    blob BYTEA,
+                    value JSONB,
+                    task_path TEXT NOT NULL DEFAULT '', 
+                    PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id, task_id, idx)
+                );
+            """)
+
+            # --- 2. 用户体系表 ---
+            # 用户表
+            await cur.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    user_id TEXT PRIMARY KEY,
+                    username TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+            
+            # 用户-会话 关联表
+            await cur.execute("""
+                CREATE TABLE IF NOT EXISTS user_threads (
+                    thread_id TEXT PRIMARY KEY,
+                    user_id TEXT REFERENCES users(user_id),
+                    title TEXT,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+
+            print("✅ [Database] 表结构验证通过！")
+
+    # --- 3. 初始化默认管理员账号 ---
+    # 这个函数在之前定义过，确保它被调用
+    await init_default_user()
+
+# 1. 用户登录 (带密码验证)
+async def db_login_user(username: str, password: str):
+    """验证用户名和密码"""
+    async with pool.connection() as conn:
+        async with conn.cursor() as cur:
+            # 查出该用户的 ID 和 哈希密码
+            await cur.execute("SELECT user_id, password_hash FROM users WHERE username = %s", (username,))
+            row = await cur.fetchone()
+            
+            if not row:
+                return {"error": "用户不存在"}
+            
+            user_id, stored_hash = row
+            
+            # 验证密码
+            if not pwd_context.verify(password, stored_hash):
+                return {"error": "密码错误"}
+            
+            return {"user_id": user_id, "username": username}
+
+# 2. 获取用户的历史会话列表
+async def db_get_user_threads(user_id: str):
+    async with pool.connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute("""
+                SELECT thread_id, title, updated_at 
+                FROM user_threads 
+                WHERE user_id = %s 
+                ORDER BY updated_at DESC
+            """, (user_id,))
+            rows = await cur.fetchall()
+            return [
+                {
+                    "id": row[0], 
+                    "title": row[1] if row[1] else "新会话", 
+                    "date": row[2].strftime("%Y-%m-%d %H:%M") if row[2] else ""
+                } 
+                for row in rows
+            ]
+
+# 3. 创建新会话
+async def db_create_thread(user_id: str, title: str = "新会话"):
+    thread_id = str(uuid.uuid4())
+    async with pool.connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute("""
+                INSERT INTO user_threads (thread_id, user_id, title)
+                VALUES (%s, %s, %s)
+            """, (thread_id, user_id, title))
+    return {"id": thread_id, "title": title, "messages": []}
+
+# 4. 更新会话时间
+async def db_update_thread_timestamp(thread_id: str):
+    async with pool.connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute("""
+                UPDATE user_threads SET updated_at = CURRENT_TIMESTAMP WHERE thread_id = %s
+            """, (thread_id,))
+
+async def db_get_thread_history(thread_id: str):
+    """
+    通过 LangGraph 的 checkpointer 获取指定 thread_id 的历史消息
+    """
+    # 1. 获取编译好的图
+    graph = await get_graph()
+    
+    # 2. 构造配置
+    config = {"configurable": {"thread_id": thread_id}}
+    
+    # 3. 获取当前状态快照
+    state_snapshot = await graph.aget_state(config)
+    
+    # 4. 提取消息
+    # 如果该 thread_id 不存在或没有历史，values 会是空的
+    messages = state_snapshot.values.get("messages", [])
+    
+    # 5. 格式化为前端需要的 JSON 格式
+    formatted_history = []
+    for msg in messages:
+        # 过滤掉 SystemMessage
+        if isinstance(msg, SystemMessage):
+            continue
+            
+        role = "user" if isinstance(msg, HumanMessage) else "ai"
+        content = msg.content
         
-        # stream_mode="values" 会返回当前时刻完整的消息列表（包含历史）
-        # 我们只打印最后一条新增的消息
-        for event in graph.stream(inputs, config=config, stream_mode="values"):
-            last_message = event["messages"][-1]
+        # 过滤掉工具调用请求 (ToolMessage 和含有 tool_calls 的 AIMessage 通常不展示给用户看，除非你想展示调试信息)
+        # 这里我们只展示最终的用户提问和 AI 回答
+        if isinstance(msg, ToolMessage):
+            continue
+        if isinstance(msg, AIMessage) and msg.tool_calls:
+            continue
+        if not content: # 如果内容为空（比如纯工具调用），跳过
+            continue
             
-            # 这里的逻辑是：只打印 AI 新生成的回复
-            if last_message.type == "ai" and last_message.content:
-                print(f"\n[助手回答]: {last_message.content}")
-
-if __name__ == "__main__":
-    main()
+        # 简单清洗 XML 标签（防止残留）
+        if isinstance(content, str):
+             if "<tool_call>" in content:
+                continue
+        
+        formatted_history.append({
+            "role": role,
+            "content": content
+        })
+        
+    return formatted_history

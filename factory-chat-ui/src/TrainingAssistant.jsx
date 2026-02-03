@@ -10,7 +10,7 @@ import { API_BASE_URL } from "./config";
 const API_URL = `${API_BASE_URL}/chat`;
 const VOICE_API_URL = `${API_BASE_URL}/voice`;
 // 接收 onBack 属性用于返回主页
-export default function TrainingAssistant({ onBack }) {
+export default function TrainingAssistant({ onBack, userId }) {
     const [threads, setThreads] = useState([]);
     const [activeThreadId, setActiveThreadId] = useState(null);
     const [messages, setMessages] = useState([]);
@@ -30,18 +30,47 @@ export default function TrainingAssistant({ onBack }) {
 
     const messagesEndRef = useRef(null);
     const abortControllerRef = useRef(null);
-    const isInitializedRef = useRef(false);
 
-    // 初始化
-    useEffect(() => {
-        if (!isInitializedRef.current) {
-            isInitializedRef.current = true;
-            // 如果本地没有 threads，创建一个新的
-            // 实际项目中，这里应该先调用 /threads 列表接口(如果你做了的话)
-            // 这里暂时保持你原有的逻辑，但如果用户手动刷新页面，我们尝试加载当前 ID
-            if (threads.length === 0) createNewThread();
+    // -----------------------------------------------------------------------
+    // 1. 获取历史会话列表的函数
+    // -----------------------------------------------------------------------
+    const fetchUserThreads = async () => {
+        if (!userId) return;
+        try {
+            // 请求后端获取该用户的会话列表
+            const res = await fetch(`${API_BASE_URL}/threads/${userId}`);
+            if (res.ok) {
+                const data = await res.json();
+                setThreads(data); // 后端应返回 [{id, title, date}, ...]
+
+                // 如果有历史记录，默认选中第一个（最新的）
+                if (data.length > 0) {
+                    // 如果当前没有选中的 ID，或者选中的 ID 不在列表里，就默认选第一个
+                    if (!activeThreadId) {
+                        switchThread(data[0].id);
+                    }
+                } else {
+                    // 如果没有历史记录，创建一个新的空会话
+                    createNewThread();
+                }
+            }
+        } catch (error) {
+            console.error("获取会话列表失败:", error);
         }
-    }, []);
+    };
+
+    // -----------------------------------------------------------------------
+    // 2. 初始化 Effect：当 userId 变化时，去后端拉取列表
+    // -----------------------------------------------------------------------
+    useEffect(() => {
+        if (userId) {
+            fetchUserThreads();
+        } else {
+            // 如果没有 userId (比如游客模式)，直接新建本地会话
+            createNewThread();
+        }
+    }, [userId]);
+
     // 自动滚动
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -69,14 +98,23 @@ export default function TrainingAssistant({ onBack }) {
         }
     }, [streamBuffer, displayedContent, isLoading]);
 
-    // 加载历史记录的函数
+    // -----------------------------------------------------------------------
+    // 3. 加载单条会话的历史消息
+    // -----------------------------------------------------------------------
     const loadHistory = async (threadId) => {
         setIsLoading(true);
+        setMessages([]); // 切换时先清空当前显示
+        setStreamBuffer("");
+        setDisplayedContent("");
+
         try {
+            // 调用后端接口获取具体聊天记录
             const res = await fetch(`${API_BASE_URL}/history/${threadId}`);
             const data = await res.json();
-            if (data.history) {
-                setMessages(data.history); // 直接覆盖当前消息列表
+
+            // 假设后端返回格式: { history: [{role: 'user', content: '...'}, ...] }
+            if (data.history && Array.isArray(data.history)) {
+                setMessages(data.history);
             }
         } catch (err) {
             console.error("加载历史记录失败", err);
@@ -85,22 +123,43 @@ export default function TrainingAssistant({ onBack }) {
         }
     };
 
-    const createNewThread = (title = "新会话") => {
+    // -----------------------------------------------------------------------
+    // 4. 创建新会话
+    // -----------------------------------------------------------------------
+    const createNewThread = () => {
+        // 生成临时 ID
         const newId = uuidv4();
-        const newThread = { id: newId, title: title, history: [] };
+        const newThread = { id: newId, title: "新会话", history: [] };
+
+        // 将新会话插到列表最前面
         setThreads(prev => [newThread, ...prev]);
         setActiveThreadId(newId);
         setMessages([]);
-        resetTyper();
+
+        // 重置打字机
+        setStreamBuffer("");
+        setDisplayedContent("");
+        setIsTyping(false);
     };
 
+    // -----------------------------------------------------------------------
+    // 5. 切换会话
+    // -----------------------------------------------------------------------
     const switchThread = (id) => {
-        if (isLoading) return;
+        if (isLoading && activeThreadId === id) return; // 如果正在加载当前会话，忽略
+
+        setActiveThreadId(id);
+
+        // 查找这个会话是“本地新建的空会话”还是“已有的历史会话”
         const targetThread = threads.find(t => t.id === id);
-        if (targetThread) {
-            setActiveThreadId(id);
-            resetTyper();
-            // 调用后端加载历史
+
+        // 如果是新创建的空会话（通常没有后端数据），直接清空界面即可
+        if (targetThread && targetThread.title === "新会话" && (!targetThread.history || targetThread.history.length === 0)) {
+            setMessages([]);
+            setStreamBuffer("");
+            setDisplayedContent("");
+        } else {
+            // 如果是历史会话，去后端加载消息
             loadHistory(id);
         }
     };
@@ -115,10 +174,13 @@ export default function TrainingAssistant({ onBack }) {
         const textToSend = manualInput || input;
         if (!textToSend.trim() || isLoading) return;
 
+        // 1. 界面立即显示用户消息
         setMessages(prev => [...prev, { role: 'user', content: textToSend }]);
         setInput("");
         setIsLoading(true);
         resetTyper();
+
+        // 2. 预占位 AI 消息
         setMessages(prev => [...prev, { role: 'ai', content: "" }]);
         abortControllerRef.current = new AbortController();
 
@@ -128,7 +190,8 @@ export default function TrainingAssistant({ onBack }) {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     query: textToSend,
-                    thread_id: activeThreadId
+                    thread_id: activeThreadId,
+                    user_id: userId // ⚠️ 重要：告诉后端是谁在发消息
                 }),
                 signal: abortControllerRef.current.signal
             });
@@ -144,11 +207,15 @@ export default function TrainingAssistant({ onBack }) {
                 setStreamBuffer(prev => prev + chunk);
             }
 
+            // 3. 更新侧边栏标题 (如果是新会话)
             setThreads(prev => prev.map(t =>
-                t.id === activeThreadId && t.title === "新培训"
-                    ? { ...t, title: textToSend }
+                t.id === activeThreadId && t.title === "新会话"
+                    ? { ...t, title: textToSend.substring(0, 20) } // 截取前20字做标题
                     : t
             ));
+
+            // 这里可以加一个 refreshThreads()，如果你想实时更新列表的时间排序
+
         } catch (error) {
             if (error.name !== 'AbortError') {
                 setStreamBuffer(prev => prev + "\n\n⚠️ 连接服务器失败，请检查后端。");
@@ -233,7 +300,7 @@ export default function TrainingAssistant({ onBack }) {
 
                 <div className="p-4">
                     <button
-                        onClick={() => createNewThread("新培训")}
+                        onClick={() => createNewThread("新会话")}
                         disabled={isLoading}
                         className="w-full flex items-center gap-2 bg-blue-600 hover:bg-blue-700 p-3 rounded-lg text-sm transition-all shadow-md group"
                     >

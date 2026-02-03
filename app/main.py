@@ -11,35 +11,57 @@ from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from faster_whisper import WhisperModel
+from pydantic import BaseModel
+from contextlib import asynccontextmanager
 
 from app.models import ChatRequest
 from app.core.agent import chat_stream, UNANSWERED_FILE
 from app.core.kb_manager import list_files_in_es, delete_file_from_es, ingest_file, ingest_from_local_path, UPLOAD_DIR, IMAGES_DIR
 from app.core.agent import chat_stream, get_history
-# ========== 新增：导入视频管理模块 ==========
 from app.core import video_manager
+from app.core.agent import pool, init_database
+from app.core.agent import db_login_user, db_get_user_threads, db_create_thread, db_update_thread_timestamp, db_get_thread_history
+class LoginRequest(BaseModel):
+    username: str
+    password: str 
 
-# --------------------------------------------------------------------------
-# 1. 初始化本地语音模型 (Faster-Whisper)
-# --------------------------------------------------------------------------
-# 为了防止显存(VRAM)溢出，强制使用 "cpu" 和 "int8" 量化
-# "small" 模型对中文识别效果很好，且在 CPU 上运行速度也很快
+class CreateThreadRequest(BaseModel):
+    user_id: str
+
 try:
     # download_root 可以指定模型下载路径，避免每次都下
     voice_model = WhisperModel("small", device="cpu", compute_type="int8", download_root="./models/whisper")
 except Exception as e:
     print(f"语音模型加载失败: {e}")
     voice_model = None
-
+# 定义生命周期管理器
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # --- 启动时运行 ---
+    print("🚀 [System] 正在启动数据库连接池...")
+    try:
+        await pool.open()
+        # 等待连接就绪
+        await pool.wait()
+        await init_database()
+        print("✅ [System] 数据库连接池已就绪")
+    except Exception as e:
+        print(f"❌ [System] 数据库连接失败: {e}")
+    
+    yield # 服务运行期间保持在这里
+    
+    # --- 关闭时运行 ---
+    print("🛑 [System] 正在关闭数据库连接池...")
+    await pool.close()
+    print("✅ [System] 数据库连接池已关闭")
 # --------------------------------------------------------------------------
-# 2. 框架配置
+# 1. 框架配置
 # --------------------------------------------------------------------------
-app = FastAPI(title="工厂智能助手 API", version="1.0")
+app = FastAPI(title="智能分拣助手 API", version="2.0",lifespan=lifespan)
 
 app.mount("/files", StaticFiles(directory=UPLOAD_DIR), name="files")
 app.mount("/images", StaticFiles(directory=IMAGES_DIR), name="images")
 
-# ========== 新增：挂载视频和缩略图静态目录 ==========
 app.mount("/videos", StaticFiles(directory=video_manager.VIDEOS_DIR), name="videos")
 app.mount("/thumbnails", StaticFiles(directory=video_manager.THUMBNAILS_DIR), name="thumbnails")
 
@@ -56,12 +78,52 @@ def read_root():
     return {"message": "Factory AI Agent Service is Running"}
 
 # --------------------------------------------------------------------------
+# 2. 用户登录接口
+# --------------------------------------------------------------------------
+# 登录接口
+@app.post("/login")
+async def login(req: LoginRequest):
+    result = await db_login_user(req.username, req.password)
+    if "error" in result:
+        # 返回 HTTP 401 未授权错误
+        raise HTTPException(status_code=401, detail=result["error"])
+    return result
+
+# 新建会话接口
+@app.post("/threads")
+async def create_thread(req: CreateThreadRequest):
+    return await db_create_thread(req.user_id)
+
+# 获取用户的历史会话列表
+@app.get("/threads/{user_id}")
+async def get_user_threads_route(user_id: str):
+    try:
+        threads = await db_get_user_threads(user_id)
+        # threads 结构应为: [{"id": "...", "title": "...", "date": "..."}]
+        return threads
+    except Exception as e:
+        print(f"Error fetching threads: {e}")
+        return []
+
+@app.get("/history/{thread_id}")
+async def get_chat_history(thread_id: str):
+    try:
+        # 直接调用 agent.py 里的辅助函数
+        history = await db_get_thread_history(thread_id)
+        return {"history": history}
+    except Exception as e:
+        print(f"Error getting history: {e}")
+        # 如果出错，返回空列表，防止前端崩坏
+        return {"history": []}
+# --------------------------------------------------------------------------
 # 3. 核心接口
 # --------------------------------------------------------------------------
 
 @app.post("/chat")
 async def chat_endpoint(request: ChatRequest):
     """对话接口 (流式)"""
+    # 先更新数据库里的时间戳，这样列表排序才会变
+    await db_update_thread_timestamp(request.thread_id)
     return StreamingResponse(
         chat_stream(request.query, request.thread_id),
         media_type="text/event-stream"
