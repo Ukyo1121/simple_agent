@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import {
     Send, Plus, MessageSquare, User, Bot, Loader2, StopCircle,
-    Mic, ArrowLeft, GraduationCap, Trash2
+    Mic, ArrowLeft, GraduationCap, Trash2, Wrench, AlertTriangle
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { API_BASE_URL } from "./config";
@@ -63,9 +63,6 @@ export default function TrainingAssistant({ onBack, userId }) {
     useEffect(() => {
         if (userId) {
             fetchUserThreads();
-        } else {
-            // 如果没有 userId (比如游客模式)，直接新建本地会话
-            createNewThread();
         }
     }, [userId]);
 
@@ -453,6 +450,33 @@ export default function TrainingAssistant({ onBack, userId }) {
                                 <p className="text-gray-500 mb-10 max-w-md">
                                     您可以询问具体的设备操作步骤，我会通过图文并茂的方式指导您完成任务。
                                 </p>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-3xl px-4 font-sans">
+                                    <button
+                                        onClick={() => handleSend("教我使用自动分拣系统的桁架机械手的主控界面")}
+                                        className="flex items-center gap-3 p-4 bg-white border border-gray-200 rounded-xl hover:border-blue-400 hover:shadow-md transition-all text-left group"
+                                    >
+                                        <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors">
+                                            <Wrench size={20} className="text-blue-600" />
+                                        </div>
+                                        <div>
+                                            <div className="font-semibold text-gray-700 group-hover:text-blue-700">设备操作培训</div>
+                                            <div className="text-xs text-gray-400">例：教我使用自动分拣系统的桁架机械手主控界面</div>
+                                        </div>
+                                    </button>
+
+                                    <button
+                                        onClick={() => handleSend("自动分拣系统的设备作业工艺流程是什么？")}
+                                        className="flex items-center gap-3 p-4 bg-white border border-gray-200 rounded-xl hover:border-blue-400 hover:shadow-md transition-all text-left group"
+                                    >
+                                        <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors">
+                                            <AlertTriangle size={20} className="text-blue-600" />
+                                        </div>
+                                        <div>
+                                            <div className="font-semibold text-gray-700 group-hover:text-blue-700">操作规范查询</div>
+                                            <div className="text-xs text-gray-400">例：自动分拣系统的设备作业工艺流程是什么？</div>
+                                        </div>
+                                    </button>
+                                </div>
                             </div>
                         )}
 
@@ -554,7 +578,7 @@ export default function TrainingAssistant({ onBack, userId }) {
                                 value={input}
                                 onChange={(e) => setInput(e.target.value)}
                                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                                placeholder={isRecording ? "正在听你说话..." : "输入您想学习的操作内容（如：教我使用自动分拣系统的桁架机械手的主控界面）..."}
+                                placeholder={isRecording ? "正在听你说话..." : "输入您想学习的操作内容..."}
                                 className="w-full max-h-32 bg-transparent border-none focus:ring-0 resize-none p-3 text-gray-700 placeholder-gray-400 text-sm"
                                 rows={1}
                                 disabled={isLoading || isRecording || isProcessingVoice}

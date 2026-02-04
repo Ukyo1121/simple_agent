@@ -63,9 +63,6 @@ export default function DebugAssistant({ onBack, userId }) {
     useEffect(() => {
         if (userId) {
             fetchUserThreads();
-        } else {
-            // 如果没有 userId (比如游客模式)，直接新建本地会话
-            createNewThread();
         }
     }, [userId]);
 
@@ -453,7 +450,7 @@ export default function DebugAssistant({ onBack, userId }) {
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-3xl px-4 font-sans">
                                     <button
-                                        onClick={() => handleSend("FANUC机器人开机零点校准故障报警怎么处理")}
+                                        onClick={() => handleSend("FAUNC机器人开机零点校准故障报警怎么处理")}
                                         className="flex items-center gap-3 p-4 bg-white border border-gray-200 rounded-xl hover:border-purple-400 hover:shadow-md transition-all text-left group"
                                     >
                                         <div className="w-10 h-10 bg-purple-50 rounded-lg flex items-center justify-center group-hover:bg-purple-100 transition-colors">
@@ -461,7 +458,7 @@ export default function DebugAssistant({ onBack, userId }) {
                                         </div>
                                         <div>
                                             <div className="font-semibold text-gray-700 group-hover:text-purple-700">机器故障维修</div>
-                                            <div className="text-xs text-gray-400">例：FANUC机器人开机零点校准故障报警怎么处理</div>
+                                            <div className="text-xs text-gray-400">例：FAUNC机器人开机零点校准故障报警怎么处理</div>
                                         </div>
                                     </button>
 
