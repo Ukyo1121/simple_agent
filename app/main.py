@@ -20,13 +20,16 @@ from app.core.kb_manager import list_files_in_es, delete_file_from_es, ingest_fi
 from app.core.agent import chat_stream, get_history
 from app.core import video_manager
 from app.core.agent import pool, init_database
-from app.core.agent import db_login_user, db_get_user_threads, db_create_thread, db_update_thread_timestamp, db_get_thread_history
+from app.core.agent import db_login_user, db_get_user_threads, db_create_thread, db_update_thread_timestamp, db_get_thread_history,db_update_thread_title
 class LoginRequest(BaseModel):
     username: str
     password: str 
 
 class CreateThreadRequest(BaseModel):
     user_id: str
+
+class UpdateTitleRequest(BaseModel):
+    title: str
 
 try:
     # download_root 可以指定模型下载路径，避免每次都下
@@ -91,8 +94,12 @@ async def login(req: LoginRequest):
 
 # 新建会话接口
 @app.post("/threads")
-async def create_thread(req: CreateThreadRequest):
-    return await db_create_thread(req.user_id)
+async def create_thread_route(req: CreateThreadRequest):
+    try:
+        # 调用 agent.py 里的数据库插入函数
+        return await db_create_thread(req.user_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # 获取用户的历史会话列表
 @app.get("/threads/{user_id}")
@@ -115,6 +122,16 @@ async def get_chat_history(thread_id: str):
         print(f"Error getting history: {e}")
         # 如果出错，返回空列表，防止前端崩坏
         return {"history": []}
+
+# 更新标题的接口
+@app.put("/threads/{thread_id}/title")
+async def update_thread_title_route(thread_id: str, req: UpdateTitleRequest):
+    try:
+        await db_update_thread_title(thread_id, req.title)
+        return {"status": "success", "title": req.title}
+    except Exception as e:
+        print(f"更新标题失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 # --------------------------------------------------------------------------
 # 3. 核心接口
 # --------------------------------------------------------------------------

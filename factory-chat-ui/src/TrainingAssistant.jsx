@@ -37,20 +37,19 @@ export default function TrainingAssistant({ onBack, userId }) {
     const fetchUserThreads = async () => {
         if (!userId) return;
         try {
-            // 请求后端获取该用户的会话列表
             const res = await fetch(`${API_BASE_URL}/threads/${userId}`);
             if (res.ok) {
                 const data = await res.json();
-                setThreads(data); // 后端应返回 [{id, title, date}, ...]
+                setThreads(data);
 
-                // 如果有历史记录，默认选中第一个（最新的）
                 if (data.length > 0) {
-                    // 如果当前没有选中的 ID，或者选中的 ID 不在列表里，就默认选第一个
+                    // 如果有历史记录，默认选中第一个
                     if (!activeThreadId) {
                         switchThread(data[0].id);
                     }
                 } else {
-                    // 如果没有历史记录，创建一个新的空会话
+                    // 如果列表为空，自动调用上面改写过的、带持久化的新建函数
+                    // 注意：这里可能会导致组件加载时自动发一次 POST 请求，是正常行为
                     createNewThread();
                 }
             }
@@ -126,20 +125,47 @@ export default function TrainingAssistant({ onBack, userId }) {
     // -----------------------------------------------------------------------
     // 4. 创建新会话
     // -----------------------------------------------------------------------
-    const createNewThread = () => {
-        // 生成临时 ID
-        const newId = uuidv4();
-        const newThread = { id: newId, title: "新会话", history: [] };
+    const createNewThread = async () => {
+        if (isLoading) return;
+        setIsLoading(true); // 加个简单的 loading 锁防止重复点击
 
-        // 将新会话插到列表最前面
-        setThreads(prev => [newThread, ...prev]);
-        setActiveThreadId(newId);
-        setMessages([]);
+        try {
+            // 1. 向后端发送 POST 请求，在数据库创建记录
+            const res = await fetch(`${API_BASE_URL}/threads`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: userId }) // 告诉后端是谁创建的
+            });
 
-        // 重置打字机
-        setStreamBuffer("");
-        setDisplayedContent("");
-        setIsTyping(false);
+            if (!res.ok) {
+                throw new Error("创建会话失败");
+            }
+
+            // 2. 拿到后端返回的真实 DB 数据 (包含 thread_id, title 等)
+            const newThreadData = await res.json();
+            // 预期格式: { "id": "uuid...", "title": "新对话", "messages": [] }
+
+            // 3. 构建前端对象
+            const newThread = {
+                id: newThreadData.id,
+                title: newThreadData.title || "新会话",
+                history: []
+            };
+
+            // 4. 更新前端列表 (插到最前面)
+            setThreads(prev => [newThread, ...prev]);
+
+            // 5. 自动选中新会话
+            setActiveThreadId(newThread.id);
+            setMessages([]); // 清空右侧消息
+            resetTyper();    // 重置打字机状态
+
+        } catch (error) {
+            console.error("新建会话失败:", error);
+            alert("无法创建新会话，请检查网络或后端服务");
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     // -----------------------------------------------------------------------
@@ -185,13 +211,38 @@ export default function TrainingAssistant({ onBack, userId }) {
         abortControllerRef.current = new AbortController();
 
         try {
+            const currentThread = threads.find(t => t.id === activeThreadId);
+
+            // 判断条件：如果有当前会话，且标题是默认值 "新会话"
+            if (currentThread && (currentThread.title === "新会话" || currentThread.title === "New Thread")) {
+
+                const newTitle = textToSend.length > 15
+                    ? textToSend.substring(0, 15) + "..."
+                    : textToSend;
+
+                // A. 更新前端显示
+                setThreads(prev => prev.map(t =>
+                    t.id === activeThreadId ? { ...t, title: newTitle } : t
+                ));
+
+                // B. 异步请求后端更新数据库 (fire-and-forget，不阻塞聊天)
+                fetch(`${API_BASE_URL}/threads/${activeThreadId}/title`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title: newTitle })
+                }).catch(err => console.warn("标题自动更新失败:", err));
+            }
+        } catch (err) {
+            console.error("标题逻辑出错，已跳过:", err);
+        }
+        try {
             const response = await fetch(API_URL, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     query: textToSend,
                     thread_id: activeThreadId,
-                    user_id: userId // ⚠️ 重要：告诉后端是谁在发消息
+                    user_id: userId // 告诉后端是谁在发消息
                 }),
                 signal: abortControllerRef.current.signal
             });
@@ -206,15 +257,6 @@ export default function TrainingAssistant({ onBack, userId }) {
                 const chunk = decoder.decode(value, { stream: true });
                 setStreamBuffer(prev => prev + chunk);
             }
-
-            // 3. 更新侧边栏标题 (如果是新会话)
-            setThreads(prev => prev.map(t =>
-                t.id === activeThreadId && t.title === "新会话"
-                    ? { ...t, title: textToSend.substring(0, 20) } // 截取前20字做标题
-                    : t
-            ));
-
-            // 这里可以加一个 refreshThreads()，如果你想实时更新列表的时间排序
 
         } catch (error) {
             if (error.name !== 'AbortError') {

@@ -821,7 +821,18 @@ async def db_update_thread_timestamp(thread_id: str):
             await cur.execute("""
                 UPDATE user_threads SET updated_at = CURRENT_TIMESTAMP WHERE thread_id = %s
             """, (thread_id,))
-
+# 5. 直接更新会话标题的数据库函数
+async def db_update_thread_title(thread_id: str, title: str):
+    """
+    更新指定会话的标题
+    """
+    async with pool.connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute("""
+                UPDATE user_threads 
+                SET title = %s, updated_at = CURRENT_TIMESTAMP 
+                WHERE thread_id = %s
+            """, (title, thread_id))
 async def db_get_thread_history(thread_id: str):
     """
     通过 LangGraph 的 checkpointer 获取指定 thread_id 的历史消息
