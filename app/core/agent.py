@@ -14,10 +14,6 @@ import base64
 import uuid
 
 warnings.filterwarnings("ignore")
-# os.environ["TRANSFORMERS_VERBOSITY"] = "error"  # 只显示严重错误
-# os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1" # 屏蔽 Windows 下的符号链接警告
-# logging.getLogger("langchain").setLevel(logging.ERROR)
-# logging.getLogger("langgraph").setLevel(logging.ERROR)
 
 from typing import Annotated, Literal, TypedDict
 
@@ -753,9 +749,16 @@ async def init_database():
                     thread_id TEXT PRIMARY KEY,
                     user_id TEXT REFERENCES users(user_id),
                     title TEXT,
+                    thread_type TEXT DEFAULT 'training', 
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             """)
+
+            # 为了兼容旧数据，尝试添加字段（如果表已存在但没这个字段）
+            try:
+                await cur.execute("ALTER TABLE user_threads ADD COLUMN IF NOT EXISTS thread_type TEXT DEFAULT 'training';")
+            except Exception as e:
+                print(f"⚠️ 字段添加跳过 (可能已存在): {e}")
 
             print("✅ [Database] 表结构验证通过！")
 
@@ -784,15 +787,17 @@ async def db_login_user(username: str, password: str):
             return {"user_id": user_id, "username": username}
 
 # 2. 获取用户的历史会话列表
-async def db_get_user_threads(user_id: str):
+# 增加 thread_type 参数，默认为 'training'
+async def db_get_user_threads(user_id: str, thread_type: str = "training"):
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
+            # SQL 语句中增加 WHERE thread_type = %s
             await cur.execute("""
                 SELECT thread_id, title, updated_at 
                 FROM user_threads 
-                WHERE user_id = %s 
+                WHERE user_id = %s AND thread_type = %s
                 ORDER BY updated_at DESC
-            """, (user_id,))
+            """, (user_id, thread_type))
             rows = await cur.fetchall()
             return [
                 {
@@ -804,14 +809,16 @@ async def db_get_user_threads(user_id: str):
             ]
 
 # 3. 创建新会话
-async def db_create_thread(user_id: str, title: str = "新会话"):
+async def db_create_thread(user_id: str, title: str = "新会话", thread_type: str = "training"):
     thread_id = str(uuid.uuid4())
+    print(f"DEBUG: Creating thread - User: {user_id}, Title: {title}, Type: {thread_type}") # 添加打印以便调试
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
+            # 插入 thread_type
             await cur.execute("""
-                INSERT INTO user_threads (thread_id, user_id, title)
-                VALUES (%s, %s, %s)
-            """, (thread_id, user_id, title))
+                INSERT INTO user_threads (thread_id, user_id, title, thread_type)
+                VALUES (%s, %s, %s, %s)
+            """, (thread_id, user_id, title, thread_type))
     return {"id": thread_id, "title": title, "messages": []}
 
 # 4. 更新会话时间

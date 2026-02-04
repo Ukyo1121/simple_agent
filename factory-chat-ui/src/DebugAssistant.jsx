@@ -36,7 +36,7 @@ export default function DebugAssistant({ onBack, userId }) {
     const fetchUserThreads = async () => {
         if (!userId) return;
         try {
-            const res = await fetch(`${API_BASE_URL}/threads/${userId}`);
+            const res = await fetch(`${API_BASE_URL}/threads/${userId}?thread_type=debug`);
             if (res.ok) {
                 const data = await res.json();
                 setThreads(data);
@@ -137,7 +137,7 @@ export default function DebugAssistant({ onBack, userId }) {
             const res = await fetch(`${API_BASE_URL}/threads`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user_id: userId }) // 告诉后端是谁创建的
+                body: JSON.stringify({ user_id: userId, thread_type: 'debug' }) // 告诉后端是谁创建的
             });
 
             if (!res.ok) {

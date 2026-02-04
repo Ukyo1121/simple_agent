@@ -27,6 +27,7 @@ class LoginRequest(BaseModel):
 
 class CreateThreadRequest(BaseModel):
     user_id: str
+    thread_type: str
 
 class UpdateTitleRequest(BaseModel):
     title: str
@@ -97,15 +98,15 @@ async def login(req: LoginRequest):
 async def create_thread_route(req: CreateThreadRequest):
     try:
         # 调用 agent.py 里的数据库插入函数
-        return await db_create_thread(req.user_id)
+        return await db_create_thread(user_id=req.user_id, title="新会话", thread_type=req.thread_type)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 # 获取用户的历史会话列表
 @app.get("/threads/{user_id}")
-async def get_user_threads_route(user_id: str):
+async def get_user_threads_route(user_id: str, thread_type: str = "training"):
     try:
-        threads = await db_get_user_threads(user_id)
+        threads = await db_get_user_threads(user_id,thread_type)
         # threads 结构应为: [{"id": "...", "title": "...", "date": "..."}]
         return threads
     except Exception as e:
