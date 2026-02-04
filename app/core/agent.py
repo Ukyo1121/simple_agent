@@ -880,3 +880,28 @@ async def db_get_thread_history(thread_id: str):
         })
         
     return formatted_history
+
+# 删除会话及其历史记录
+async def db_delete_thread(thread_id: str, user_id: str):
+    """
+    删除指定的会话，包括元数据和 LangGraph 的历史记录
+    """
+    async with pool.connection() as conn:
+        async with conn.cursor() as cur:
+            # 1. 删除用户会话记录 (确保只能删除属于该用户的会话)
+            #返回被删除的行数，用于判断是否存在或是否有权删除
+            await cur.execute("""
+                DELETE FROM user_threads 
+                WHERE thread_id = %s AND user_id = %s
+            """, (thread_id, user_id))
+            
+            if cur.rowcount == 0:
+                return False # 删除失败（未找到或无权删除）
+
+            # 2. 清理 LangGraph 产生的历史数据 (checkpoints 表等)
+            # 这些表里 thread_id 是主键的一部分
+            await cur.execute("DELETE FROM checkpoints WHERE thread_id = %s", (thread_id,))
+            await cur.execute("DELETE FROM checkpoint_blobs WHERE thread_id = %s", (thread_id,))
+            await cur.execute("DELETE FROM checkpoint_writes WHERE thread_id = %s", (thread_id,))
+            
+            return True

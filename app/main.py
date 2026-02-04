@@ -20,7 +20,7 @@ from app.core.kb_manager import list_files_in_es, delete_file_from_es, ingest_fi
 from app.core.agent import chat_stream, get_history
 from app.core import video_manager
 from app.core.agent import pool, init_database
-from app.core.agent import db_login_user, db_get_user_threads, db_create_thread, db_update_thread_timestamp, db_get_thread_history,db_update_thread_title
+from app.core.agent import db_login_user, db_get_user_threads, db_create_thread, db_update_thread_timestamp, db_get_thread_history,db_update_thread_title,db_delete_thread
 class LoginRequest(BaseModel):
     username: str
     password: str 
@@ -131,6 +131,19 @@ async def update_thread_title_route(thread_id: str, req: UpdateTitleRequest):
         return {"status": "success", "title": req.title}
     except Exception as e:
         print(f"更新标题失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# 删除会话接口
+@app.delete("/threads/{thread_id}")
+async def delete_thread_route(thread_id: str, user_id: str): 
+    # 注意：这里通过 query参数 ?user_id=xxx 传递用户ID进行鉴权
+    try:
+        success = await db_delete_thread(thread_id, user_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="会话不存在或无权删除")
+        return {"status": "success", "message": "会话已删除"}
+    except Exception as e:
+        print(f"删除会话失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 # --------------------------------------------------------------------------
 # 3. 核心接口

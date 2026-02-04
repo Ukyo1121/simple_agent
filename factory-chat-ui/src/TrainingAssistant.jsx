@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import {
     Send, Plus, MessageSquare, User, Bot, Loader2, StopCircle,
-    Zap, Wrench, AlertTriangle, Mic, ArrowLeft, GraduationCap
+    Zap, Wrench, AlertTriangle, Mic, ArrowLeft, GraduationCap, Trash2
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { API_BASE_URL } from "./config";
@@ -195,7 +195,48 @@ export default function TrainingAssistant({ onBack, userId }) {
         setDisplayedContent("");
         setIsTyping(false);
     };
+    // 处理删除逻辑
+    const handleDeleteThread = async (e, threadId) => {
+        // 1. 阻止事件冒泡：防止触发外层 div 的 onClick (切换会话)
+        e.stopPropagation();
 
+        // 2. 确认提示
+        if (!window.confirm("确定要删除这条历史记录吗？删除后无法恢复。")) {
+            return;
+        }
+
+        try {
+            // 3. 调用后端 API
+            const res = await fetch(`${API_BASE_URL}/threads/${threadId}?user_id=${userId}`, {
+                method: 'DELETE',
+            });
+
+            if (res.ok) {
+                // 4. 更新前端状态
+                const newThreads = threads.filter(t => t.id !== threadId);
+                setThreads(newThreads);
+
+                // 5. 如果删除的是当前选中的会话
+                if (activeThreadId === threadId) {
+                    if (newThreads.length > 0) {
+                        // 切换到剩下的第一个
+                        setActiveThreadId(newThreads[0].id);
+                        // 这里可以选做：重新拉取该会话的消息，或者简单清空
+                        setMessages([]);
+                        // 触发一次切换逻辑最好，这里简化处理，手动清理
+                    } else {
+                        // 如果删光了，就创建一个新的
+                        createNewThread();
+                    }
+                }
+            } else {
+                alert("删除失败，请重试");
+            }
+        } catch (error) {
+            console.error("删除出错:", error);
+            alert("网络错误");
+        }
+    };
     const handleSend = async (manualInput = null) => {
         const textToSend = manualInput || input;
         if (!textToSend.trim() || isLoading) return;
@@ -356,13 +397,33 @@ export default function TrainingAssistant({ onBack, userId }) {
                             key={thread.id}
                             onClick={() => switchThread(thread.id)}
                             disabled={isLoading}
-                            className={`w-full text-left p-3 rounded-lg mb-1 text-sm flex items-center gap-2 truncate transition-colors ${activeThreadId === thread.id
-                                ? 'bg-gray-800 text-white border-l-2 border-blue-500'
-                                : 'text-gray-400 hover:bg-gray-800'
-                                }`}
+                            // 在 className 中添加了 'group'，这是为了让里面的 group-hover 生效
+                            className={`
+                group w-full text-left p-3 rounded-lg mb-1 text-sm flex items-center gap-2 transition-colors 
+                ${activeThreadId === thread.id
+                                    ? 'bg-gray-800 text-white border-l-2 border-blue-500'
+                                    : 'text-gray-400 hover:bg-gray-800'
+                                }
+            `}
                         >
                             <MessageSquare size={14} className="flex-shrink-0" />
-                            <span className="truncate">{thread.title}</span>
+
+                            {/* 添加了 'flex-1'。这会让文字撑满中间的空间，把后面的按钮推到最右边 */}
+                            <span className="truncate flex-1">{thread.title}</span>
+
+                            {/* 删除按钮 */}
+                            <div
+                                role="button"
+                                onClick={(e) => handleDeleteThread(e, thread.id)}
+                                className={`
+                    p-1.5 rounded-md text-slate-400 hover:text-red-400 hover:bg-gray-700 transition-all 
+                    opacity-0 group-hover:opacity-100 flex-shrink-0
+                    ${activeThreadId === thread.id ? 'opacity-100' : ''} 
+                `}
+                                title="删除会话"
+                            >
+                                <Trash2 size={16} />
+                            </div>
                         </button>
                     ))}
                 </div>
