@@ -1,8 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
-import { v4 as uuidv4 } from 'uuid';
 import {
     Send, Plus, MessageSquare, User, Bot, Loader2, StopCircle,
-    Zap, Wrench, AlertTriangle, Mic, ArrowLeft, GraduationCap, Trash2
+    Mic, ArrowLeft, GraduationCap, Trash2
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { API_BASE_URL } from "./config";

@@ -1,8 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
-import { v4 as uuidv4 } from 'uuid';
 import {
-    Send, Plus, MessageSquare, User, Bug, Loader2, StopCircle,
-    Terminal, Mic, ArrowLeft, Trash2
+    Send, Plus, MessageSquare, User, Bot, Loader2, StopCircle,
+    Mic, ArrowLeft, GraduationCap, Trash2, Terminal, Bug
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { API_BASE_URL } from "./config";
@@ -17,10 +16,12 @@ export default function DebugAssistant({ onBack, userId }) {
     const [input, setInput] = useState("");
     const [isLoading, setIsLoading] = useState(false);
 
+    // 打字机状态
     const [streamBuffer, setStreamBuffer] = useState("");
     const [displayedContent, setDisplayedContent] = useState("");
     const [isTyping, setIsTyping] = useState(false);
 
+    // 语音状态
     const [isRecording, setIsRecording] = useState(false);
     const [isProcessingVoice, setIsProcessingVoice] = useState(false);
     const mediaRecorderRef = useRef(null);
@@ -29,6 +30,9 @@ export default function DebugAssistant({ onBack, userId }) {
     const messagesEndRef = useRef(null);
     const abortControllerRef = useRef(null);
 
+    // -----------------------------------------------------------------------
+    // 1. 获取历史会话列表的函数
+    // -----------------------------------------------------------------------
     const fetchUserThreads = async () => {
         if (!userId) return;
         try {
@@ -36,11 +40,15 @@ export default function DebugAssistant({ onBack, userId }) {
             if (res.ok) {
                 const data = await res.json();
                 setThreads(data);
+
                 if (data.length > 0) {
+                    // 如果有历史记录，默认选中第一个
                     if (!activeThreadId) {
                         switchThread(data[0].id);
                     }
                 } else {
+                    // 如果列表为空，自动调用上面改写过的、带持久化的新建函数
+                    // 注意：这里可能会导致组件加载时自动发一次 POST 请求，是正常行为
                     createNewThread();
                 }
             }
@@ -49,18 +57,24 @@ export default function DebugAssistant({ onBack, userId }) {
         }
     };
 
+    // -----------------------------------------------------------------------
+    // 2. 初始化 Effect：当 userId 变化时，去后端拉取列表
+    // -----------------------------------------------------------------------
     useEffect(() => {
         if (userId) {
             fetchUserThreads();
         } else {
+            // 如果没有 userId (比如游客模式)，直接新建本地会话
             createNewThread();
         }
     }, [userId]);
 
+    // 自动滚动
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages, displayedContent, isLoading]);
 
+    // 打字机逻辑
     useEffect(() => {
         if (streamBuffer.length > displayedContent.length) {
             setIsTyping(true);
@@ -82,15 +96,21 @@ export default function DebugAssistant({ onBack, userId }) {
         }
     }, [streamBuffer, displayedContent, isLoading]);
 
+    // -----------------------------------------------------------------------
+    // 3. 加载单条会话的历史消息
+    // -----------------------------------------------------------------------
     const loadHistory = async (threadId) => {
         setIsLoading(true);
-        setMessages([]);
+        setMessages([]); // 切换时先清空当前显示
         setStreamBuffer("");
         setDisplayedContent("");
 
         try {
+            // 调用后端接口获取具体聊天记录
             const res = await fetch(`${API_BASE_URL}/history/${threadId}`);
             const data = await res.json();
+
+            // 假设后端返回格式: { history: [{role: 'user', content: '...'}, ...] }
             if (data.history && Array.isArray(data.history)) {
                 setMessages(data.history);
             }
@@ -101,54 +121,70 @@ export default function DebugAssistant({ onBack, userId }) {
         }
     };
 
+    // -----------------------------------------------------------------------
+    // 4. 创建新会话
+    // -----------------------------------------------------------------------
     const createNewThread = async () => {
         if (isLoading) return;
-        setIsLoading(true);
+        setIsLoading(true); // 加个简单的 loading 锁防止重复点击
 
         try {
+            // 1. 向后端发送 POST 请求，在数据库创建记录
             const res = await fetch(`${API_BASE_URL}/threads`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user_id: userId })
+                body: JSON.stringify({ user_id: userId }) // 告诉后端是谁创建的
             });
 
-            if (!res.ok) throw new Error("创建会话失败");
+            if (!res.ok) {
+                throw new Error("创建会话失败");
+            }
 
+            // 2. 拿到后端返回的真实 DB 数据 (包含 thread_id, title 等)
             const newThreadData = await res.json();
+            // 预期格式: { "id": "uuid...", "title": "新对话", "messages": [] }
+
+            // 3. 构建前端对象
             const newThread = {
                 id: newThreadData.id,
                 title: newThreadData.title || "新会话",
                 history: []
             };
 
+            // 4. 更新前端列表 (插到最前面)
             setThreads(prev => [newThread, ...prev]);
+
+            // 5. 自动选中新会话
             setActiveThreadId(newThread.id);
-            setMessages([]);
-            setStreamBuffer("");
-            setDisplayedContent("");
+            setMessages([]); // 清空右侧消息
+            resetTyper();    // 重置打字机状态
 
         } catch (error) {
-            console.error("创建会话失败:", error);
-            const fallbackId = uuidv4();
-            const fallbackThread = { id: fallbackId, title: "新会话", history: [] };
-            setThreads(prev => [fallbackThread, ...prev]);
-            setActiveThreadId(fallbackId);
-            setMessages([]);
+            console.error("新建会话失败:", error);
+            alert("无法创建新会话，请检查网络或后端服务");
         } finally {
             setIsLoading(false);
         }
     };
 
+    // -----------------------------------------------------------------------
+    // 5. 切换会话
+    // -----------------------------------------------------------------------
     const switchThread = (id) => {
-        if (isLoading) return;
+        if (isLoading && activeThreadId === id) return; // 如果正在加载当前会话，忽略
+
         setActiveThreadId(id);
 
+        // 查找这个会话是“本地新建的空会话”还是“已有的历史会话”
         const targetThread = threads.find(t => t.id === id);
+
+        // 如果是新创建的空会话（通常没有后端数据），直接清空界面即可
         if (targetThread && targetThread.title === "新会话" && (!targetThread.history || targetThread.history.length === 0)) {
             setMessages([]);
             setStreamBuffer("");
             setDisplayedContent("");
         } else {
+            // 如果是历史会话，去后端加载消息
             loadHistory(id);
         }
     };
@@ -158,28 +194,37 @@ export default function DebugAssistant({ onBack, userId }) {
         setDisplayedContent("");
         setIsTyping(false);
     };
-
+    // 处理删除逻辑
     const handleDeleteThread = async (e, threadId) => {
+        // 1. 阻止事件冒泡：防止触发外层 div 的 onClick (切换会话)
         e.stopPropagation();
 
-        if (!window.confirm("确定要删除这条调试记录吗？删除后无法恢复。")) {
+        // 2. 确认提示
+        if (!window.confirm("确定要删除这条历史记录吗？删除后无法恢复。")) {
             return;
         }
 
         try {
+            // 3. 调用后端 API
             const res = await fetch(`${API_BASE_URL}/threads/${threadId}?user_id=${userId}`, {
                 method: 'DELETE',
             });
 
             if (res.ok) {
+                // 4. 更新前端状态
                 const newThreads = threads.filter(t => t.id !== threadId);
                 setThreads(newThreads);
 
+                // 5. 如果删除的是当前选中的会话
                 if (activeThreadId === threadId) {
                     if (newThreads.length > 0) {
+                        // 切换到剩下的第一个
                         setActiveThreadId(newThreads[0].id);
+                        // 这里可以选做：重新拉取该会话的消息，或者简单清空
                         setMessages([]);
+                        // 触发一次切换逻辑最好，这里简化处理，手动清理
                     } else {
+                        // 如果删光了，就创建一个新的
                         createNewThread();
                     }
                 }
@@ -191,32 +236,36 @@ export default function DebugAssistant({ onBack, userId }) {
             alert("网络错误");
         }
     };
-
     const handleSend = async (manualInput = null) => {
         const textToSend = manualInput || input;
         if (!textToSend.trim() || isLoading) return;
 
+        // 1. 界面立即显示用户消息
         setMessages(prev => [...prev, { role: 'user', content: textToSend }]);
         setInput("");
         setIsLoading(true);
         resetTyper();
 
+        // 2. 预占位 AI 消息
         setMessages(prev => [...prev, { role: 'ai', content: "" }]);
         abortControllerRef.current = new AbortController();
 
         try {
             const currentThread = threads.find(t => t.id === activeThreadId);
 
+            // 判断条件：如果有当前会话，且标题是默认值 "新会话"
             if (currentThread && (currentThread.title === "新会话" || currentThread.title === "New Thread")) {
 
                 const newTitle = textToSend.length > 15
                     ? textToSend.substring(0, 15) + "..."
                     : textToSend;
 
+                // A. 更新前端显示
                 setThreads(prev => prev.map(t =>
                     t.id === activeThreadId ? { ...t, title: newTitle } : t
                 ));
 
+                // B. 异步请求后端更新数据库 (fire-and-forget，不阻塞聊天)
                 fetch(`${API_BASE_URL}/threads/${activeThreadId}/title`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
@@ -226,7 +275,6 @@ export default function DebugAssistant({ onBack, userId }) {
         } catch (err) {
             console.error("标题逻辑出错，已跳过:", err);
         }
-
         try {
             const response = await fetch(API_URL, {
                 method: "POST",
@@ -234,7 +282,7 @@ export default function DebugAssistant({ onBack, userId }) {
                 body: JSON.stringify({
                     query: textToSend,
                     thread_id: activeThreadId,
-                    user_id: userId
+                    user_id: userId // 告诉后端是谁在发消息
                 }),
                 signal: abortControllerRef.current.signal
             });
@@ -267,6 +315,7 @@ export default function DebugAssistant({ onBack, userId }) {
         }
     };
 
+    // --- 语音逻辑 ---
     const startRecording = async () => {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -279,37 +328,15 @@ export default function DebugAssistant({ onBack, userId }) {
 
             mediaRecorderRef.current.onstop = async () => {
                 const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+                await sendAudioToBackend(audioBlob);
                 stream.getTracks().forEach(track => track.stop());
-
-                setIsProcessingVoice(true);
-                const formData = new FormData();
-                formData.append('audio', audioBlob, 'recording.webm');
-
-                try {
-                    const response = await fetch(VOICE_API_URL, {
-                        method: 'POST',
-                        body: formData
-                    });
-
-                    if (response.ok) {
-                        const data = await response.json();
-                        const transcribedText = data.text || "";
-                        if (transcribedText.trim()) {
-                            handleSend(transcribedText);
-                        }
-                    }
-                } catch (err) {
-                    console.error("语音识别错误:", err);
-                } finally {
-                    setIsProcessingVoice(false);
-                }
             };
 
             mediaRecorderRef.current.start();
             setIsRecording(true);
-        } catch (err) {
-            console.error("无法访问麦克风:", err);
-            alert("请允许麦克风权限");
+        } catch (error) {
+            console.error("无法访问麦克风:", error);
+            alert("无法访问麦克风，请检查权限设置。");
         }
     };
 
@@ -317,11 +344,30 @@ export default function DebugAssistant({ onBack, userId }) {
         if (mediaRecorderRef.current && isRecording) {
             mediaRecorderRef.current.stop();
             setIsRecording(false);
+            setIsProcessingVoice(true);
+        }
+    };
+
+    const sendAudioToBackend = async (audioBlob) => {
+        const formData = new FormData();
+        formData.append("file", audioBlob, "voice_input.webm");
+
+        try {
+            const response = await fetch(VOICE_API_URL, { method: "POST", body: formData });
+            if (!response.ok) throw new Error("识别失败");
+            const data = await response.json();
+            if (data.text) setInput(prev => prev + data.text);
+        } catch (error) {
+            console.error("语音识别错误:", error);
+            alert("语音识别失败，请重试");
+        } finally {
+            setIsProcessingVoice(false);
         }
     };
 
     return (
         <div className="flex h-screen bg-gray-50 text-gray-800 font-sans animate-fade-in">
+            {/* 侧边栏 */}
             <div className="w-64 bg-gray-900 text-white flex flex-col flex-shrink-0 shadow-xl z-20">
                 <div className="p-4 border-b border-gray-800 flex items-center gap-3">
                     <button onClick={onBack} className="p-2 hover:bg-gray-800 rounded-lg text-gray-400 hover:text-white transition-colors">
@@ -335,7 +381,7 @@ export default function DebugAssistant({ onBack, userId }) {
 
                 <div className="p-4">
                     <button
-                        onClick={createNewThread}
+                        onClick={() => createNewThread("新会话")}
                         disabled={isLoading}
                         className="w-full flex items-center gap-2 bg-purple-600 hover:bg-purple-700 p-3 rounded-lg text-sm transition-all shadow-md group border border-purple-500"
                     >
@@ -345,29 +391,39 @@ export default function DebugAssistant({ onBack, userId }) {
 
                 <div className="flex-1 overflow-y-auto px-2 custom-scrollbar">
                     {threads.map(thread => (
-                        <div
+                        <button
                             key={thread.id}
                             onClick={() => switchThread(thread.id)}
-                            className={`group relative p-3 rounded-lg mb-1 text-sm flex items-center gap-2 cursor-pointer transition-all ${activeThreadId === thread.id
+                            disabled={isLoading}
+                            // 样式结构同步：使用 group w-full text-left
+                            className={`group w-full text-left p-3 rounded-lg mb-1 text-sm flex items-center gap-2 transition-all ${activeThreadId === thread.id
                                 ? 'bg-gray-800 text-white border-l-2 border-purple-500'
                                 : 'text-gray-400 hover:bg-gray-800'
                                 }`}
                         >
                             <Terminal size={14} className="flex-shrink-0 text-purple-400" />
+                            {/* flex-1 撑开中间 */}
                             <span className="truncate flex-1">{thread.title}</span>
 
-                            <button
+                            <div
+                                role="button"
                                 onClick={(e) => handleDeleteThread(e, thread.id)}
-                                className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-900/50 rounded text-gray-600 hover:text-red-400 transition-all"
+                                // 样式同步：active 时 opacity-100，否则 hover 显示
+                                className={`
+                                    p-1 hover:bg-red-900/50 rounded text-gray-600 hover:text-red-400 transition-all
+                                    opacity-0 group-hover:opacity-100 flex-shrink-0
+                                    ${activeThreadId === thread.id ? 'opacity-100' : ''}
+                                `}
                                 title="删除会话"
                             >
                                 <Trash2 size={14} />
-                            </button>
-                        </div>
+                            </div>
+                        </button>
                     ))}
                 </div>
             </div>
 
+            {/* 主界面 */}
             <div className="flex-1 flex flex-col relative bg-white">
                 <div className="h-14 border-b flex items-center px-6 shadow-sm z-10 bg-white/80 backdrop-blur-md justify-between">
                     <h1 className="font-semibold text-gray-700 flex items-center gap-2 font-sans">
@@ -458,6 +514,7 @@ export default function DebugAssistant({ onBack, userId }) {
                                                         )
                                                     },
                                                     img: ({ node, ...props }) => {
+                                                        // --- 同步 TrainingAssistant 的图片修复逻辑 ---
                                                         let imgSrc = props.src;
                                                         if (imgSrc) {
                                                             if (imgSrc.includes('localhost:8000')) {
@@ -466,6 +523,7 @@ export default function DebugAssistant({ onBack, userId }) {
                                                                 imgSrc = `${API_BASE_URL}${imgSrc}`;
                                                             }
                                                         }
+                                                        // ----------------------------------------
                                                         return (
                                                             <img
                                                                 {...props}
