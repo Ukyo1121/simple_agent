@@ -433,7 +433,7 @@ export default function App() {
         case 'training-video':
             return <TrainingVideoManager onBack={() => setCurrentModule('training-menu')} />;
         case 'debug':
-            return <DebugAssistant onBack={() => setCurrentModule('home')} />;
+            return <DebugAssistant onBack={() => setCurrentModule('home')} userId={user.user_id} />;
         case 'monitoring':
             return <LifecycleDashboard isOpen={true} onClose={() => setCurrentModule('home')} />;
         case 'collection':

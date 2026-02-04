@@ -125,6 +125,10 @@ export default function DebugAssistant({ onBack, userId }) {
     // 4. 创建新会话
     // -----------------------------------------------------------------------
     const createNewThread = async () => {
+        if (!userId) {
+            console.warn("userId 缺失，跳过创建会话");
+            return;
+        }
         if (isLoading) return;
         setIsLoading(true); // 加个简单的 loading 锁防止重复点击
 
