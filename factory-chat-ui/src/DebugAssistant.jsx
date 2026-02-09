@@ -310,7 +310,10 @@ export default function DebugAssistant({ onBack, userId }) {
         const userMessage = {
             role: "user",
             content: textToSend,
-            files: currentFiles.map(f => ({ name: f.name, type: 'file' })) // 格式化一下
+            files: currentFiles.map(f => ({
+                name: f.fileName || f.name,
+                type: f.type
+            }))
         };
         setMessages(prev => [...prev, userMessage]);
         setInput("");
@@ -694,7 +697,7 @@ export default function DebugAssistant({ onBack, userId }) {
                                                 {file.fileName}
                                             </span>
                                             <span className="text-[10px] text-purple-400 uppercase leading-none">
-                                                {file.type === 'image' ? 'Image' : 'Log/Code'}
+                                                {file.type === 'image' ? '图片' : '文件'}
                                             </span>
                                         </div>
 
