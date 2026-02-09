@@ -505,10 +505,16 @@ async def upload_temp_file(file: UploadFile = File(...)):
         elif ext in ["jpg", "jpeg", "png"]:
             file_data = await file.read()
             base64_image = base64.b64encode(file_data).decode('utf-8')
+            image_filename = f"chat_{uuid.uuid4().hex}.{ext}"
+            image_path = os.path.join(IMAGES_DIR, image_filename)
+            with open(image_path, "wb") as f:
+                f.write(file_data)
+            
             return JSONResponse({
                 "type": "image",
                 "content": base64_image,
-                "fileName": file.filename
+                "fileName": file.filename,
+                "savedPath": image_filename  # 新增: 返回保存的路径
             })
 
         return JSONResponse({

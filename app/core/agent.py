@@ -558,7 +558,7 @@ async def get_graph():
 
 async def chat_stream(message: str, thread_id: str, temp_context: dict = None):
     """
-    流式对话接口，支持临时上下文（文件/图片）
+    流式对话接口,支持临时上下文(文件/图片)
     """
     try:
         # 获取 graph
@@ -579,7 +579,7 @@ async def chat_stream(message: str, thread_id: str, temp_context: dict = None):
         # 收集文本文件内容
         attached_texts = []
 
-        # 归一化 temp_context：如果是 None 转空列表，如果是单个 dict 转列表
+        # 归一化 temp_context:如果是 None 转空列表,如果是单个 dict 转列表
         if temp_context:
             if isinstance(temp_context, dict):
                 temp_context = [temp_context]
@@ -588,12 +588,21 @@ async def chat_stream(message: str, thread_id: str, temp_context: dict = None):
                 c_type = ctx.get("type")
                 c_content = ctx.get("content")
                 c_name = ctx.get("fileName", "未知文件")
+                c_saved_path = ctx.get("savedPath")  # 获取保存路径
 
                 if c_type == "text":
                     # 累积文本文件内容
-                    attached_texts.append(f"【参考文件：{c_name}】\n{c_content}")
+                    attached_texts.append(f"【参考文件:{c_name}】\n{c_content}")
                 
                 elif c_type == "image":
+                    # 记录图片信息时包含保存路径
+                    if c_saved_path:
+                        # 新格式: 包含路径信息
+                        attached_texts.append(f"【参考文件:{c_name}|路径:{c_saved_path}】")
+                    else:
+                        # 旧格式兼容
+                        attached_texts.append(f"【参考文件:{c_name}】")
+                    
                     # 累积图片 (构造 LangChain/OpenAI 标准 image_url 格式)
                     image_contents.append({
                         "type": "image_url",
@@ -602,23 +611,22 @@ async def chat_stream(message: str, thread_id: str, temp_context: dict = None):
                         }
                     })
 
-        #如果有附加的文本文件，拼接到用户 prompt 前面
+        # 如果有附加的文本文件或图片,拼接到用户 prompt 前面
         if attached_texts:
-            joined_files = "\n\n".join(attached_texts)
+            joined_files = "\n".join(attached_texts)  
             final_text_content = (
-                f"用户上传了以下参考资料，请仔细阅读：\n"
-                f"========================================\n"
+                f"用户上传了以下参考资料:\n"
                 f"{joined_files}\n"
-                f"========================================\n"
-                f"用户的具体问题是：{message}"
+                f"---\n"
+                f"用户的具体问题是:{message}"
             )
 
         # 构造最终发给 LLM 的 content
-        # 如果有图片，必须使用 list 格式 [{"type": "text", ...}, {"type": "image_url", ...}]
+        # 如果有图片,必须使用 list 格式 [{"type": "text", ...}, {"type": "image_url", ...}]
         if image_contents:
             content_to_send = [{"type": "text", "text": final_text_content}] + image_contents
         else:
-            # 如果只有文本，直接发字符串即可 (节省 token 且兼容性更好)
+            # 如果只有文本,直接发字符串即可 (节省 token 且兼容性更好)
             content_to_send = final_text_content
 
         # 构造 HumanMessage

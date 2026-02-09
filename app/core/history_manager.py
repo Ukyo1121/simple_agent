@@ -233,9 +233,10 @@ async def db_delete_thread(thread_id: str, user_id: str):
 # 7.获取先前历史记录的函数，供前端展示
 def parse_files_and_clean_content(content: str):
     """
-    功能：
-    1. 从 raw_content 中提取 "【参考文件：xxx】" 的文件名。
-    2. 清洗掉 RAG 提示词上下文，只保留用户的真实问题。
+    功能:
+    1. 从 raw_content 中提取 "【参考文件:xxx|路径:yyy】" 的文件名和路径。
+    2. 清洗掉 RAG 提示词上下文,只保留用户的真实问题。
+    3. 🟢 新增: 如果是图片,读取文件返回 base64
     
     返回: (cleaned_text, file_list)
     """
@@ -245,57 +246,72 @@ def parse_files_and_clean_content(content: str):
     files = []
     
     # ---------------------------------------------------------
-    # 1. 提取文件名 (修改点：适配新的 Prompt 格式)
+    # 1. 提取文件名和路径 (新格式: 【参考文件:原名|路径:保存名】)
     # ---------------------------------------------------------
     
-    # 针对你提供的样本：【参考文件：周计划.xlsx】
-    # 正则解释：
-    # \[ 和 \] 匹配中括号
-    # (.*?) 是非贪婪匹配，提取文件名
-    matches = re.findall(r"【参考文件：(.*?)】", content)
+    # 正则匹配新格式
+    matches_with_path = re.findall(r"【参考文件:(.*?)\|路径:(.*?)】", content)
     
-    for name in matches:
-        # 由于现在统一叫“参考文件”，我们需要根据后缀名判断是否为图片
-        # 这样前端才能显示正确的图标 (ImageIcon 或 FileText)
-        ext = name.split('.')[-1].lower() if '.' in name else ""
+    for original_name, saved_path in matches_with_path:
+        ext = original_name.split('.')[-1].lower() if '.' in original_name else ""
         
         if ext in ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp']:
             file_type = "image"
-        else:
-            file_type = "file"
+            base64_data = None
             
-        files.append({"name": name, "type": file_type})
-
-    # --- 兼容旧格式 (可选，为了防止有旧数据的遗留) ---
-    # 如果你的系统里还有 "用户上传了图片 xxx" 这种旧格式，可以保留下面这段
-    old_img_matches = re.findall(r"用户上传了图片 (.*?)，", content)
-    for name in old_img_matches:
-        files.append({"name": name, "type": "image"})
+            # 🟢 读取图片文件
+            img_path = os.path.join(IMAGES_DIR, saved_path)
+            if os.path.exists(img_path):
+                try:
+                    with open(img_path, "rb") as f:
+                        base64_data = base64.b64encode(f.read()).decode('utf-8')
+                except Exception as e:
+                    print(f"⚠️ 读取图片失败: {img_path}, 错误: {e}")
+            else:
+                print(f"⚠️ 图片文件不存在: {img_path}")
+            
+            files.append({
+                "name": original_name,
+                "type": file_type,
+                "base64": base64_data  
+            })
+        else:
+            files.append({
+                "name": original_name,
+                "type": "file"
+            })
+    
+    # ---------------------------------------------------------
+    # 兼容旧格式 (没有路径信息的)
+    # ---------------------------------------------------------
+    old_matches = re.findall(r"【参考文件:(.*?)】", content)
+    for name in old_matches:
+        # 跳过已经处理过的(新格式的)
+        if any(f["name"] == name for f in files):
+            continue
+            
+        ext = name.split('.')[-1].lower() if '.' in name else ""
+        if ext in ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp']:
+            # 旧数据,只能返回文件名,无法加载base64
+            files.append({"name": name, "type": "image", "base64": None})
+        else:
+            files.append({"name": name, "type": "file"})
 
     # ---------------------------------------------------------
     # 2. 清洗文本
     # ---------------------------------------------------------
     cleaned_text = content
-    marker = "用户的具体问题是："
+    marker = "用户的具体问题是:"
     
     if marker in content:
-        # 截取 marker 之后的内容
         cleaned_text = content.split(marker)[-1].strip()
     else:
-        # 如果没有找到 marker，但确实检测到了文件
-        # 说明这可能是一条纯文件发送的消息（没有附带文字问题）
-        # 或者 Prompt 格式不完整。
         if files:
-            # 策略：如果全是文件上下文且没有 marker，则认为用户没有输入文本
-            # 我们可以尝试过滤掉 prompt 的头部，或者直接返回空字符串让前端只显示文件
-            # 这里简单处理：如果包含 "【参考文件：" 但没找到 marker，为了不显示一大堆乱码，
-            # 我们尽量返回空，或者只返回 marker 之前的一小段（但这很难判断）。
-            # 最稳妥的方式：如果全是 Context 且没 marker，就设为空。
             if "用户上传了以下参考资料" in content:
                 cleaned_text = "" 
-            pass
 
     return cleaned_text.strip(), files
+
 
 async def get_history(thread_id: str):
     """

@@ -260,7 +260,7 @@ export default function TrainingAssistant({ onBack, userId }) {
         const files = Array.from(e.target.files);
         if (files.length === 0) return;
 
-        // 遍历处理每个文件（为了用户体验，这里并行上传）
+        // 遍历处理每个文件(为了用户体验,这里并行上传)
         const uploadPromises = files.map(async (file) => {
             const formData = new FormData();
             formData.append("file", file);
@@ -270,7 +270,7 @@ export default function TrainingAssistant({ onBack, userId }) {
                     method: "POST",
                     body: formData,
                 });
-                return await res.json(); // 返回解析后的数据 {type, content, fileName}
+                return await res.json(); // 返回解析后的数据 {type, content, fileName, savedPath}
             } catch (err) {
                 console.error(`文件 ${file.name} 上传失败`, err);
                 return null;
@@ -280,12 +280,12 @@ export default function TrainingAssistant({ onBack, userId }) {
         setIsLoading(true);
         try {
             const results = await Promise.all(uploadPromises);
-            // 过滤掉失败的(null)，并将新文件追加到现有列表中
+            // 过滤掉失败的(null),并将新文件追加到现有列表中
             const successfulFiles = results.filter(f => f !== null);
             setAttachedFiles(prev => [...prev, ...successfulFiles]);
         } finally {
             setIsLoading(false);
-            e.target.value = ''; // 清空 input，允许重复上传同名文件
+            e.target.value = ''; // 清空 input,允许重复上传同名文件
         }
     };
 
@@ -298,8 +298,17 @@ export default function TrainingAssistant({ onBack, userId }) {
         const textToSend = manualInput || input;
         if (!textToSend.trim() || isLoading) return;
 
-        const finalTempContext = attachedFiles.length > 0 ? attachedFiles : null;
         const currentFiles = [...attachedFiles]; // 复制当前的文件列表
+
+        // 构建包含路径信息的 temp_context
+        const finalTempContext = currentFiles.length > 0
+            ? currentFiles.map(f => ({
+                type: f.type,
+                content: f.content,
+                fileName: f.fileName || f.name,
+                savedPath: f.savedPath  // 传递保存路径
+            }))
+            : null;
 
         // 1. 界面立即显示用户消息
         // 构建消息对象
@@ -308,7 +317,9 @@ export default function TrainingAssistant({ onBack, userId }) {
             content: textToSend,
             files: currentFiles.map(f => ({
                 name: f.fileName || f.name,
-                type: f.type
+                type: f.type,
+                base64: f.type === "image" ? f.content : undefined,
+                savedPath: f.savedPath  // 保存路径(用于历史记录)
             }))
         };
         setMessages(prev => [...prev, userMessage]);
@@ -324,7 +335,7 @@ export default function TrainingAssistant({ onBack, userId }) {
         try {
             const currentThread = threads.find(t => t.id === activeThreadId);
 
-            // 判断条件：如果有当前会话，且标题是默认值 "新会话"
+            // 判断条件:如果有当前会话,且标题是默认值 "新会话"
             if (currentThread && (currentThread.title === "新会话" || currentThread.title === "New Thread")) {
 
                 const newTitle = textToSend.length > 15
@@ -336,7 +347,7 @@ export default function TrainingAssistant({ onBack, userId }) {
                     t.id === activeThreadId ? { ...t, title: newTitle } : t
                 ));
 
-                // B. 异步请求后端更新数据库 (fire-and-forget，不阻塞聊天)
+                // B. 异步请求后端更新数据库 (fire-and-forget,不阻塞聊天)
                 fetch(`${API_BASE_URL}/threads/${activeThreadId}/title`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
@@ -344,8 +355,9 @@ export default function TrainingAssistant({ onBack, userId }) {
                 }).catch(err => console.warn("标题自动更新失败:", err));
             }
         } catch (err) {
-            console.error("标题逻辑出错，已跳过:", err);
+            console.error("标题逻辑出错,已跳过:", err);
         }
+
         try {
             const response = await fetch(API_URL, {
                 method: "POST",
@@ -354,7 +366,7 @@ export default function TrainingAssistant({ onBack, userId }) {
                     query: textToSend,
                     thread_id: activeThreadId,
                     user_id: userId,
-                    temp_context: finalTempContext
+                    temp_context: finalTempContext  // 使用新的 temp_context
                 }),
                 signal: abortControllerRef.current.signal
             });
@@ -372,7 +384,7 @@ export default function TrainingAssistant({ onBack, userId }) {
 
         } catch (error) {
             if (error.name !== 'AbortError') {
-                setStreamBuffer(prev => prev + "\n\n⚠️ 连接服务器失败，请检查后端。");
+                setStreamBuffer(prev => prev + "\n\n⚠️ 连接服务器失败,请检查后端。");
             }
         } finally {
             setIsLoading(false);
@@ -581,27 +593,62 @@ export default function TrainingAssistant({ onBack, userId }) {
                                         {/* 2.1 文件列表 (放在气泡上方) */}
                                         {msg.files && msg.files.length > 0 && (
                                             <div className={`flex flex-wrap gap-2 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                                {msg.files.map((file, fIndex) => (
-                                                    <div
-                                                        key={fIndex}
-                                                        className="flex items-center gap-2 bg-white border border-gray-200 px-3 py-2 rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-default"
-                                                    >
-                                                        {/* 图标 */}
-                                                        <div className="shrink-0 p-1 bg-gray-50 rounded-lg">
-                                                            {getFileIcon(file.name, file.type)}
-                                                        </div>
+                                                {msg.files.map((file, fIndex) => {
+                                                    // 判断是否为图片类型
+                                                    const isImage = file.type === 'image';
 
-                                                        {/* 文件名信息 */}
-                                                        <div className="flex flex-col min-w-0">
-                                                            <span className="text-xs font-medium text-gray-700 truncate max-w-[180px]">
-                                                                {file.name}
-                                                            </span>
-                                                            <span className="text-[10px] text-gray-400">
-                                                                {file.type === 'image' ? '图片' : '文件'}
-                                                            </span>
-                                                        </div>
-                                                    </div>
-                                                ))}
+                                                    // 如果是图片且有 base64 数据,显示图片预览
+                                                    if (isImage && file.base64) {
+                                                        return (
+                                                            <div
+                                                                key={fIndex}
+                                                                className="rounded-xl overflow-hidden border border-gray-200 shadow-sm hover:shadow-md transition-shadow bg-white"
+                                                                style={{ maxWidth: '300px' }}
+                                                            >
+                                                                {/* 图片预览 */}
+                                                                <img
+                                                                    src={`data:image/jpeg;base64,${file.base64}`}
+                                                                    alt={file.name}
+                                                                    className="w-full h-auto"
+                                                                    style={{
+                                                                        maxHeight: '300px',
+                                                                        objectFit: 'contain',
+                                                                        display: 'block'
+                                                                    }}
+                                                                />
+                                                                {/* 文件名 */}
+                                                                <div className="px-3 py-2 bg-gray-50 border-t border-gray-100">
+                                                                    <span className="text-xs text-gray-600 truncate block">
+                                                                        {file.name}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    } else {
+                                                        // 非图片或没有 base64 数据,显示文件图标(保持原逻辑)
+                                                        return (
+                                                            <div
+                                                                key={fIndex}
+                                                                className="flex items-center gap-2 bg-white border border-gray-200 px-3 py-2 rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-default"
+                                                            >
+                                                                {/* 图标 */}
+                                                                <div className="shrink-0 p-1 bg-gray-50 rounded-lg">
+                                                                    {getFileIcon(file.name, file.type)}
+                                                                </div>
+
+                                                                {/* 文件名信息 */}
+                                                                <div className="flex flex-col min-w-0">
+                                                                    <span className="text-xs font-medium text-gray-700 truncate max-w-[180px]">
+                                                                        {file.name}
+                                                                    </span>
+                                                                    <span className="text-[10px] text-gray-400">
+                                                                        {file.type === 'image' ? '图片' : '文件'}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    }
+                                                })}
                                             </div>
                                         )}
 
