@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import {
     Send, Plus, MessageSquare, User, Bot, Loader2, StopCircle,
-    Mic, ArrowLeft, GraduationCap, Trash2, Terminal, Bug
+    Mic, ArrowLeft, GraduationCap, Trash2, Terminal, Bug, Paperclip, X
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { API_BASE_URL } from "./config";
@@ -29,6 +29,9 @@ export default function DebugAssistant({ onBack, userId }) {
 
     const messagesEndRef = useRef(null);
     const abortControllerRef = useRef(null);
+
+    // 存储临时文件解析后的内容
+    const [attachedFiles, setAttachedFiles] = useState([]);
 
     // -----------------------------------------------------------------------
     // 1. 获取历史会话列表的函数
@@ -237,14 +240,56 @@ export default function DebugAssistant({ onBack, userId }) {
             alert("网络错误");
         }
     };
+    // 处理临时文件上传函数
+    const handleFileUpload = async (e) => {
+        // 获取选中的所有文件
+        const files = Array.from(e.target.files);
+        if (files.length === 0) return;
+
+        // 遍历处理每个文件（为了用户体验，这里并行上传）
+        const uploadPromises = files.map(async (file) => {
+            const formData = new FormData();
+            formData.append("file", file);
+
+            try {
+                const res = await fetch(`${API_BASE_URL}/upload-temp-file`, {
+                    method: "POST",
+                    body: formData,
+                });
+                return await res.json(); // 返回解析后的数据 {type, content, fileName}
+            } catch (err) {
+                console.error(`文件 ${file.name} 上传失败`, err);
+                return null;
+            }
+        });
+
+        setIsLoading(true);
+        try {
+            const results = await Promise.all(uploadPromises);
+            // 过滤掉失败的(null)，并将新文件追加到现有列表中
+            const successfulFiles = results.filter(f => f !== null);
+            setAttachedFiles(prev => [...prev, ...successfulFiles]);
+        } finally {
+            setIsLoading(false);
+            e.target.value = ''; // 清空 input，允许重复上传同名文件
+        }
+    };
+
+    // 删除单个文件的函数
+    const removeFile = (indexToRemove) => {
+        setAttachedFiles(prev => prev.filter((_, index) => index !== indexToRemove));
+    };
     const handleSend = async (manualInput = null) => {
         const textToSend = manualInput || input;
         if (!textToSend.trim() || isLoading) return;
 
+        const finalTempContext = attachedFiles.length > 0 ? attachedFiles : null;
+
         // 1. 界面立即显示用户消息
-        setMessages(prev => [...prev, { role: 'user', content: textToSend }]);
+        setMessages(prev => [...prev, { role: 'user', content: textToSend, files: attachedFiles }]);
         setInput("");
         setIsLoading(true);
+        setAttachedFiles([]);
         resetTyper();
 
         // 2. 预占位 AI 消息
@@ -283,7 +328,8 @@ export default function DebugAssistant({ onBack, userId }) {
                 body: JSON.stringify({
                     query: textToSend,
                     thread_id: activeThreadId,
-                    user_id: userId // 告诉后端是谁在发消息
+                    user_id: userId, // 告诉后端是谁在发消息
+                    temp_context: finalTempContext
                 }),
                 signal: abortControllerRef.current.signal
             });
@@ -450,7 +496,7 @@ export default function DebugAssistant({ onBack, userId }) {
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-3xl px-4 font-sans">
                                     <button
-                                        onClick={() => handleSend("FAUNC机器人开机零点校准故障报警怎么处理")}
+                                        onClick={() => handleSend("FANUC机器人开机零点校准故障报警怎么处理")}
                                         className="flex items-center gap-3 p-4 bg-white border border-gray-200 rounded-xl hover:border-purple-400 hover:shadow-md transition-all text-left group"
                                     >
                                         <div className="w-10 h-10 bg-purple-50 rounded-lg flex items-center justify-center group-hover:bg-purple-100 transition-colors">
@@ -458,7 +504,7 @@ export default function DebugAssistant({ onBack, userId }) {
                                         </div>
                                         <div>
                                             <div className="font-semibold text-gray-700 group-hover:text-purple-700">机器故障维修</div>
-                                            <div className="text-xs text-gray-400">例：FAUNC机器人开机零点校准故障报警怎么处理</div>
+                                            <div className="text-xs text-gray-400">例：FANUC机器人开机零点校准故障报警怎么处理</div>
                                         </div>
                                     </button>
 
@@ -553,28 +599,90 @@ export default function DebugAssistant({ onBack, userId }) {
                     </div>
                 </div>
 
-                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-white via-white to-transparent pt-12 pb-6 px-4">
-                    <div className="max-w-4xl mx-auto relative group">
+                {/* 输入框区域 - 调试助手风格 (Purple Theme) */}
+                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-white via-white to-transparent pt-4 pb-12 px-4">
+                    <div className="max-w-3xl mx-auto relative group flex flex-col justify-end">
 
+                        {/* --- 0. 录音状态提示 (保持红色警示) --- */}
                         {isRecording && (
-                            <div className="absolute -top-12 left-1/2 transform -translate-x-1/2 bg-red-500 text-white px-4 py-1.5 rounded-full text-xs animate-pulse shadow-md flex items-center gap-2 z-20">
+                            <div className="absolute -top-16 left-1/2 transform -translate-x-1/2 bg-red-500 text-white px-4 py-1.5 rounded-full text-xs animate-pulse shadow-md flex items-center gap-2 z-20">
                                 <span className="w-2 h-2 bg-white rounded-full animate-ping"></span>
                                 正在录音... 点击麦克风结束
                             </div>
                         )}
 
-                        <div className="bg-white border border-gray-300 rounded-xl shadow-lg flex items-end p-2 gap-2 focus-within:ring-2 focus-within:ring-purple-500/20 focus-within:border-purple-400">
+                        {/* --- 1. 上层：文件预览区域 (紫色系) --- */}
+                        {attachedFiles.length > 0 && (
+                            <div className="mb-2 w-full flex gap-2 overflow-x-auto custom-scrollbar pb-1">
+                                {attachedFiles.map((file, index) => (
+                                    <div
+                                        key={index}
+                                        className="relative flex-shrink-0 flex items-center gap-2 bg-purple-50 border border-purple-200 text-purple-700 px-3 py-2 rounded-xl shadow-sm animate-in slide-in-from-bottom-2 fade-in duration-300"
+                                    >
+                                        {/* 左侧图标 */}
+                                        <div className="bg-white p-1.5 rounded-full text-purple-500 flex-shrink-0">
+                                            {file.type === 'image' ? <Paperclip size={14} /> : <Terminal size={14} />}
+                                        </div>
+
+                                        {/* 中间文件名 */}
+                                        <div className="flex flex-col max-w-[120px]">
+                                            <span className="text-xs font-medium truncate" title={file.fileName}>
+                                                {file.fileName}
+                                            </span>
+                                            <span className="text-[10px] text-purple-400 uppercase leading-none">
+                                                {file.type === 'image' ? 'Image' : 'Log/Code'}
+                                            </span>
+                                        </div>
+
+                                        {/* 删除按钮 (红色交互保持不变) */}
+                                        <button
+                                            onClick={() => removeFile(index)}
+                                            className="ml-1 p-1 text-purple-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all duration-200"
+                                            title="移除此文件"
+                                        >
+                                            <X size={14} />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* --- 2. 下层：输入框主体 (紫色聚焦态) --- */}
+                        <div className="bg-white border border-gray-300 rounded-xl shadow-lg flex items-end p-2 gap-2 focus-within:ring-2 focus-within:ring-purple-500/20 focus-within:border-purple-400 z-10">
                             <textarea
                                 value={input}
                                 onChange={(e) => setInput(e.target.value)}
                                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                                placeholder={isRecording ? "正在听你说话..." : "描述故障现象或粘贴代码片段与错误日志..."}
+                                placeholder={isRecording ? "正在记录调试语音..." : "粘贴日志或描述 Bug..."}
                                 className="w-full max-h-32 bg-transparent border-none focus:ring-0 resize-none p-3 text-gray-700 placeholder-gray-400 text-sm"
                                 rows={1}
                                 disabled={isLoading || isRecording || isProcessingVoice}
                             />
 
+                            {/* 按钮工具栏 */}
                             <div className="flex items-center mb-1 gap-1">
+                                {/* 隐藏的 input */}
+                                <input
+                                    type="file"
+                                    id="debug-file-upload" // ID稍微改一下避免冲突
+                                    multiple
+                                    className="hidden"
+                                    onChange={handleFileUpload}
+                                    disabled={isLoading}
+                                    accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.txt,.log,.py,.js" // 增加了代码和日志格式
+                                />
+                                <label
+                                    htmlFor="debug-file-upload"
+                                    className={`p-2 rounded-lg transition-all mr-1 cursor-pointer flex items-center justify-center
+                                    ${isLoading
+                                            ? 'bg-gray-50 text-gray-300 cursor-not-allowed'
+                                            : 'bg-gray-100 text-gray-500 hover:bg-gray-200 active:scale-95'
+                                        }`}
+                                >
+                                    <Paperclip size={20} />
+                                </label>
+
+                                {/* 语音按钮 */}
                                 {isProcessingVoice ? (
                                     <div className="p-2 mr-1"><Loader2 size={20} className="animate-spin text-purple-500" /></div>
                                 ) : (
@@ -587,22 +695,22 @@ export default function DebugAssistant({ onBack, userId }) {
                                     </button>
                                 )}
 
+                                {/* 发送按钮 (紫色背景) */}
                                 {isLoading ? (
                                     <button onClick={handleStop} className="p-2 rounded-lg bg-red-50 text-red-500 hover:bg-red-100"><StopCircle size={20} /></button>
                                 ) : (
                                     <button
                                         onClick={() => handleSend()}
-                                        disabled={!input.trim()}
-                                        className={`p-2 rounded-lg transition-all ${input.trim()
-                                            ? 'bg-purple-600 text-white hover:bg-purple-700'
-                                            : 'bg-gray-100 text-gray-300 cursor-not-allowed'
-                                            }`}
+                                        disabled={!input.trim() && attachedFiles.length === 0}
+                                        className={`p-2 rounded-lg transition-all ${input.trim() || attachedFiles.length > 0 ? 'bg-purple-600 text-white hover:bg-purple-700 shadow-purple-200' : 'bg-gray-100 text-gray-300 cursor-not-allowed'}`}
                                     >
                                         <Send size={18} />
                                     </button>
                                 )}
                             </div>
                         </div>
+
+                        {/* 底部小提示 */}
                         <p className="text-center text-xs text-gray-400 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
                             调试模式下建议提供完整 Log 以便分析
                         </p>

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import {
     Send, Plus, MessageSquare, User, Bot, Loader2, StopCircle,
-    Mic, ArrowLeft, GraduationCap, Trash2, Wrench, AlertTriangle
+    Mic, ArrowLeft, GraduationCap, Trash2, Wrench, AlertTriangle, Paperclip, X
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { API_BASE_URL } from "./config";
@@ -29,6 +29,8 @@ export default function TrainingAssistant({ onBack, userId }) {
 
     const messagesEndRef = useRef(null);
     const abortControllerRef = useRef(null);
+    // 存储临时文件解析后的内容
+    const [attachedFiles, setAttachedFiles] = useState([]);
 
     // -----------------------------------------------------------------------
     // 1. 获取历史会话列表的函数
@@ -233,14 +235,57 @@ export default function TrainingAssistant({ onBack, userId }) {
             alert("网络错误");
         }
     };
+    // 处理临时文件上传函数
+    const handleFileUpload = async (e) => {
+        // 获取选中的所有文件
+        const files = Array.from(e.target.files);
+        if (files.length === 0) return;
+
+        // 遍历处理每个文件（为了用户体验，这里并行上传）
+        const uploadPromises = files.map(async (file) => {
+            const formData = new FormData();
+            formData.append("file", file);
+
+            try {
+                const res = await fetch(`${API_BASE_URL}/upload-temp-file`, {
+                    method: "POST",
+                    body: formData,
+                });
+                return await res.json(); // 返回解析后的数据 {type, content, fileName}
+            } catch (err) {
+                console.error(`文件 ${file.name} 上传失败`, err);
+                return null;
+            }
+        });
+
+        setIsLoading(true);
+        try {
+            const results = await Promise.all(uploadPromises);
+            // 过滤掉失败的(null)，并将新文件追加到现有列表中
+            const successfulFiles = results.filter(f => f !== null);
+            setAttachedFiles(prev => [...prev, ...successfulFiles]);
+        } finally {
+            setIsLoading(false);
+            e.target.value = ''; // 清空 input，允许重复上传同名文件
+        }
+    };
+
+    // 删除单个文件的函数
+    const removeFile = (indexToRemove) => {
+        setAttachedFiles(prev => prev.filter((_, index) => index !== indexToRemove));
+    };
+
     const handleSend = async (manualInput = null) => {
         const textToSend = manualInput || input;
         if (!textToSend.trim() || isLoading) return;
 
+        const finalTempContext = attachedFiles.length > 0 ? attachedFiles : null;
+
         // 1. 界面立即显示用户消息
-        setMessages(prev => [...prev, { role: 'user', content: textToSend }]);
+        setMessages(prev => [...prev, { role: 'user', content: textToSend, files: attachedFiles }]);
         setInput("");
         setIsLoading(true);
+        setAttachedFiles([]);
         resetTyper();
 
         // 2. 预占位 AI 消息
@@ -279,7 +324,8 @@ export default function TrainingAssistant({ onBack, userId }) {
                 body: JSON.stringify({
                     query: textToSend,
                     thread_id: activeThreadId,
-                    user_id: userId // 告诉后端是谁在发消息
+                    user_id: userId, // 告诉后端是谁在发消息
+                    temp_context: finalTempContext
                 }),
                 signal: abortControllerRef.current.signal
             });
@@ -561,19 +607,56 @@ export default function TrainingAssistant({ onBack, userId }) {
                     </div>
                 </div>
 
-                {/* 输入框 (已恢复语音按钮) */}
-                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-white via-white to-transparent pt-12 pb-12 px-4">
-                    <div className="max-w-3xl mx-auto relative group">
+                {/* 输入框区域 */}
+                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-white via-white to-transparent pt-4 pb-12 px-4">
+                    <div className="max-w-3xl mx-auto relative group flex flex-col justify-end">
 
-                        {/* 录音状态提示 */}
+                        {/* --- 0. 录音状态提示 --- */}
                         {isRecording && (
-                            <div className="absolute -top-12 left-1/2 transform -translate-x-1/2 bg-red-500 text-white px-4 py-1.5 rounded-full text-xs animate-pulse shadow-md flex items-center gap-2 z-20">
+                            <div className="absolute -top-16 left-1/2 transform -translate-x-1/2 bg-red-500 text-white px-4 py-1.5 rounded-full text-xs animate-pulse shadow-md flex items-center gap-2 z-20">
                                 <span className="w-2 h-2 bg-white rounded-full animate-ping"></span>
                                 正在录音... 点击麦克风结束
                             </div>
                         )}
 
-                        <div className="bg-white border border-gray-300 rounded-xl shadow-lg flex items-end p-2 gap-2 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-400">
+                        {/* --- 1. 上层：文件预览区域 --- */}
+                        {attachedFiles.length > 0 && (
+                            <div className="mb-2 w-full flex gap-2 overflow-x-auto custom-scrollbar pb-1">
+                                {attachedFiles.map((file, index) => (
+                                    <div
+                                        key={index}
+                                        className="relative flex-shrink-0 flex items-center gap-2 bg-white border border-blue-200 text-blue-700 px-3 py-2 rounded-xl shadow-sm animate-in slide-in-from-bottom-2 fade-in duration-300"
+                                    >
+                                        {/* 左侧图标 */}
+                                        <div className="bg-blue-50 p-1.5 rounded-full text-blue-500 flex-shrink-0">
+                                            {file.type === 'image' ? <Paperclip size={14} /> : <GraduationCap size={14} />}
+                                        </div>
+
+                                        {/* 中间文件名 */}
+                                        <div className="flex flex-col max-w-[120px]">
+                                            <span className="text-xs font-medium truncate" title={file.fileName}>
+                                                {file.fileName}
+                                            </span>
+                                            <span className="text-[10px] text-blue-400 uppercase leading-none">
+                                                {file.type === 'image' ? '图片' : '文档'}
+                                            </span>
+                                        </div>
+
+                                        {/* 删除按钮 */}
+                                        <button
+                                            onClick={() => removeFile(index)}
+                                            className="ml-1 p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-all duration-200"
+                                            title="移除此文件"
+                                        >
+                                            <X size={14} />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* --- 2. 下层：输入框主体 (Textarea + 按钮) --- */}
+                        <div className="bg-white border border-gray-300 rounded-xl shadow-lg flex items-end p-2 gap-2 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-400 z-10">
                             <textarea
                                 value={input}
                                 onChange={(e) => setInput(e.target.value)}
@@ -584,7 +667,29 @@ export default function TrainingAssistant({ onBack, userId }) {
                                 disabled={isLoading || isRecording || isProcessingVoice}
                             />
 
+                            {/* 按钮工具栏 */}
                             <div className="flex items-center mb-1 gap-1">
+                                {/* 隐藏的 input */}
+                                <input
+                                    type="file"
+                                    id="file-upload"
+                                    multiple
+                                    className="hidden"
+                                    onChange={handleFileUpload}
+                                    disabled={isLoading}
+                                    accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+                                />
+                                <label
+                                    htmlFor="file-upload"
+                                    className={`p-2 rounded-lg transition-all mr-1 cursor-pointer flex items-center justify-center
+                                    ${isLoading
+                                            ? 'bg-gray-50 text-gray-300 cursor-not-allowed'
+                                            : 'bg-gray-100 text-gray-500 hover:bg-gray-200 active:scale-95'
+                                        }`}
+                                >
+                                    <Paperclip size={20} />
+                                </label>
+
                                 {/* 语音按钮 */}
                                 {isProcessingVoice ? (
                                     <div className="p-2 mr-1"><Loader2 size={20} className="animate-spin text-blue-500" /></div>
@@ -604,8 +709,8 @@ export default function TrainingAssistant({ onBack, userId }) {
                                 ) : (
                                     <button
                                         onClick={() => handleSend()}
-                                        disabled={!input.trim()}
-                                        className={`p-2 rounded-lg transition-all ${input.trim() ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-gray-100 text-gray-300 cursor-not-allowed'}`}
+                                        disabled={!input.trim() && attachedFiles.length === 0} // 只要有文件或有文字就可以发送
+                                        className={`p-2 rounded-lg transition-all ${input.trim() || attachedFiles.length > 0 ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-gray-100 text-gray-300 cursor-not-allowed'}`}
                                     >
                                         <Send size={18} />
                                     </button>

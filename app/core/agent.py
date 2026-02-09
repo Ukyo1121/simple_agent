@@ -37,8 +37,6 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from psycopg_pool import AsyncConnectionPool
 from contextlib import asynccontextmanager
 from passlib.context import CryptContext
-# 配置密码哈希算法
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # 加载环境变量
 from dotenv import load_dotenv
@@ -527,11 +525,10 @@ graph_structure = workflow
 print("🤖 工厂智能Agent已启动！")
 
 # ==============================================================================
-# 4. 初始化数据库 & 获取 Graph 实例
+# 4. 获取 Graph 实例
 # ==============================================================================
 # 用于缓存已编译的 graph，避免重复初始化
 _compiled_graph = None
-_db_initialized = False
 
 async def get_graph():
     """
@@ -559,20 +556,77 @@ async def get_graph():
 # chat_stream 函数
 # =============================================================================
 
-async def chat_stream(message: str, thread_id: str):
+async def chat_stream(message: str, thread_id: str, temp_context: dict = None):
     """
-    流式对话接口
+    流式对话接口，支持临时上下文（文件/图片）
     """
     try:
-        # 获取 graph（会自动初始化数据库）
+        # 获取 graph
         graph = await get_graph()
         config = {"configurable": {"thread_id": thread_id}}
         has_yielded = False
         
         print(f"💬 [Chat] 开始处理消息: thread_id={thread_id}")
+
+        # 构造增强型消息内容 (处理多文件/多图)
         
+        # 基础文本部分
+        final_text_content = message
+        
+        # 收集图片部分 (多模态)
+        image_contents = [] 
+        
+        # 收集文本文件内容
+        attached_texts = []
+
+        # 归一化 temp_context：如果是 None 转空列表，如果是单个 dict 转列表
+        if temp_context:
+            if isinstance(temp_context, dict):
+                temp_context = [temp_context]
+            
+            for ctx in temp_context:
+                c_type = ctx.get("type")
+                c_content = ctx.get("content")
+                c_name = ctx.get("fileName", "未知文件")
+
+                if c_type == "text":
+                    # 累积文本文件内容
+                    attached_texts.append(f"【参考文件：{c_name}】\n{c_content}")
+                
+                elif c_type == "image":
+                    # 累积图片 (构造 LangChain/OpenAI 标准 image_url 格式)
+                    image_contents.append({
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{c_content}" 
+                        }
+                    })
+
+        #如果有附加的文本文件，拼接到用户 prompt 前面
+        if attached_texts:
+            joined_files = "\n\n".join(attached_texts)
+            final_text_content = (
+                f"用户上传了以下参考资料，请仔细阅读：\n"
+                f"========================================\n"
+                f"{joined_files}\n"
+                f"========================================\n"
+                f"用户的具体问题是：{message}"
+            )
+
+        # 构造最终发给 LLM 的 content
+        # 如果有图片，必须使用 list 格式 [{"type": "text", ...}, {"type": "image_url", ...}]
+        if image_contents:
+            content_to_send = [{"type": "text", "text": final_text_content}] + image_contents
+        else:
+            # 如果只有文本，直接发字符串即可 (节省 token 且兼容性更好)
+            content_to_send = final_text_content
+
+        # 构造 HumanMessage
+        input_message = HumanMessage(content=content_to_send)
+
+        # 调用 graph
         async for event in graph.astream_events(
-            {"messages": [HumanMessage(content=message)]}, 
+            {"messages": [input_message]}, 
             config=config,
             version="v1"
         ):
@@ -583,7 +637,7 @@ async def chat_stream(message: str, thread_id: str):
                 content = event["data"]["chunk"].content
                 if content:
                     # 过滤 XML 标签
-                    if "<tool_call>" in content or "<function=" in content: 
+                    if isinstance(content, str) and ("<tool_call>" in content or "<function=" in content): 
                         continue
                     has_yielded = True
                     yield content
@@ -604,16 +658,9 @@ async def chat_stream(message: str, thread_id: str):
             # 3. 捕获 Agent 节点的直接输出
             # ------------------------------------------------------
             elif event["event"] == "on_chain_end" and event["name"] == "agent":
-                # 获取节点返回的数据
                 data = event["data"].get("output")
-                # 检查数据格式是否符合 {"messages": [...]}
                 if data and isinstance(data, dict) and "messages" in data:
                     last_msg = data["messages"][-1]
-                    
-                    # 只有当：
-                    # 1. 之前没有输出过内容 (避免和流式输出重复)
-                    # 2. 是 AI 消息
-                    # 3. 有内容
                     if (not has_yielded and 
                         isinstance(last_msg, AIMessage) and 
                         last_msg.content):
@@ -628,287 +675,3 @@ async def chat_stream(message: str, thread_id: str):
         import traceback
         traceback.print_exc()
         yield error_msg
-
-# 获取历史记录的函数 (供前端加载使用)
-async def get_history(thread_id: str):
-    """
-    从 PostgreSQL 读取指定 thread_id 的历史聊天记录
-    """
-    graph = await get_graph()
-    config = {"configurable": {"thread_id": thread_id}}
-    
-    # 获取当前状态
-    state_snapshot = await graph.aget_state(config)
-    
-    if not state_snapshot.values:
-        return []
-    
-    messages = state_snapshot.values.get("messages", [])
-    
-    # 将 LangChain Message 对象转换为前端可读的 JSON 格式
-    formatted_history = []
-    for msg in messages:
-        role = "user" if isinstance(msg, HumanMessage) else "ai"
-        # 过滤掉 ToolMessage，只显示用户和 AI 的对话
-        if isinstance(msg, (HumanMessage, AIMessage)) and msg.content:
-             # 如果 AI 消息是空的 (可能是在调用工具)，跳过
-            if role == "ai" and not msg.content:
-                continue
-            # 如果是 XML 乱码，跳过
-            if "<tool_call>" in str(msg.content):
-                continue
-                
-            formatted_history.append({
-                "role": role,
-                "content": msg.content
-            })
-            
-    return formatted_history
-
-async def init_default_user():
-    """初始化一个默认管理员账号，防止没法登录"""
-    default_user = "admin"
-    default_pass = "admin123" # 默认密码
-    
-    user_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, default_user))
-    # 加密密码
-    hashed_pw = pwd_context.hash(default_pass)
-    
-    async with pool.connection() as conn:
-        async with conn.cursor() as cur:
-            # 如果不存在才插入
-            await cur.execute("""
-                INSERT INTO users (user_id, username, password_hash) 
-                VALUES (%s, %s, %s) 
-                ON CONFLICT (username) DO NOTHING
-            """, (user_id, default_user, hashed_pw))
-            print(f"👤 [System] 默认管理员已就绪: 用户名={default_user}, 密码={default_pass}")
-async def init_database():
-    """
-    系统启动时运行：创建所有必要的表结构，并初始化管理员
-    """
-    print("🛠️ [Database] 正在检查并初始化表结构...")
-    
-    async with pool.connection() as conn:
-        await conn.set_autocommit(True)
-        async with conn.cursor() as cur:
-            # --- 1. LangGraph 核心表 ---
-            await cur.execute("""
-                CREATE TABLE IF NOT EXISTS checkpoints (
-                    thread_id TEXT NOT NULL,
-                    checkpoint_ns TEXT NOT NULL DEFAULT '',
-                    checkpoint_id TEXT NOT NULL,
-                    parent_checkpoint_id TEXT,
-                    type TEXT,
-                    checkpoint JSONB NOT NULL,
-                    metadata JSONB NOT NULL DEFAULT '{}',
-                    PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id)
-                );
-            """)
-            await cur.execute("""
-                CREATE TABLE IF NOT EXISTS checkpoint_blobs (
-                    thread_id TEXT NOT NULL,
-                    checkpoint_ns TEXT NOT NULL DEFAULT '',
-                    channel TEXT NOT NULL,
-                    version TEXT NOT NULL,
-                    type TEXT NOT NULL,
-                    blob BYTEA,
-                    PRIMARY KEY (thread_id, checkpoint_ns, channel, version)
-                );
-            """)
-            await cur.execute("""
-                CREATE TABLE IF NOT EXISTS checkpoint_writes (
-                    thread_id TEXT NOT NULL,
-                    checkpoint_ns TEXT NOT NULL DEFAULT '',
-                    checkpoint_id TEXT NOT NULL,
-                    task_id TEXT NOT NULL,
-                    idx INTEGER NOT NULL,
-                    channel TEXT NOT NULL,
-                    type TEXT,
-                    blob BYTEA,
-                    value JSONB,
-                    task_path TEXT NOT NULL DEFAULT '', 
-                    PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id, task_id, idx)
-                );
-            """)
-
-            # --- 2. 用户体系表 ---
-            # 用户表
-            await cur.execute("""
-                CREATE TABLE IF NOT EXISTS users (
-                    user_id TEXT PRIMARY KEY,
-                    username TEXT UNIQUE NOT NULL,
-                    password_hash TEXT NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );
-            """)
-            
-            # 用户-会话 关联表
-            await cur.execute("""
-                CREATE TABLE IF NOT EXISTS user_threads (
-                    thread_id TEXT PRIMARY KEY,
-                    user_id TEXT REFERENCES users(user_id),
-                    title TEXT,
-                    thread_type TEXT DEFAULT 'training', 
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );
-            """)
-
-            # 为了兼容旧数据，尝试添加字段（如果表已存在但没这个字段）
-            try:
-                await cur.execute("ALTER TABLE user_threads ADD COLUMN IF NOT EXISTS thread_type TEXT DEFAULT 'training';")
-            except Exception as e:
-                print(f"⚠️ 字段添加跳过 (可能已存在): {e}")
-
-            print("✅ [Database] 表结构验证通过！")
-
-    # --- 3. 初始化默认管理员账号 ---
-    # 这个函数在之前定义过，确保它被调用
-    await init_default_user()
-
-# 1. 用户登录 (带密码验证)
-async def db_login_user(username: str, password: str):
-    """验证用户名和密码"""
-    async with pool.connection() as conn:
-        async with conn.cursor() as cur:
-            # 查出该用户的 ID 和 哈希密码
-            await cur.execute("SELECT user_id, password_hash FROM users WHERE username = %s", (username,))
-            row = await cur.fetchone()
-            
-            if not row:
-                return {"error": "用户不存在"}
-            
-            user_id, stored_hash = row
-            
-            # 验证密码
-            if not pwd_context.verify(password, stored_hash):
-                return {"error": "密码错误"}
-            
-            return {"user_id": user_id, "username": username}
-
-# 2. 获取用户的历史会话列表
-# 增加 thread_type 参数，默认为 'training'
-async def db_get_user_threads(user_id: str, thread_type: str = "training"):
-    async with pool.connection() as conn:
-        async with conn.cursor() as cur:
-            # SQL 语句中增加 WHERE thread_type = %s
-            await cur.execute("""
-                SELECT thread_id, title, updated_at 
-                FROM user_threads 
-                WHERE user_id = %s AND thread_type = %s
-                ORDER BY updated_at DESC
-            """, (user_id, thread_type))
-            rows = await cur.fetchall()
-            return [
-                {
-                    "id": row[0], 
-                    "title": row[1] if row[1] else "新会话", 
-                    "date": row[2].strftime("%Y-%m-%d %H:%M") if row[2] else ""
-                } 
-                for row in rows
-            ]
-
-# 3. 创建新会话
-async def db_create_thread(user_id: str, title: str = "新会话", thread_type: str = "training"):
-    thread_id = str(uuid.uuid4())
-    print(f"DEBUG: Creating thread - User: {user_id}, Title: {title}, Type: {thread_type}") # 添加打印以便调试
-    async with pool.connection() as conn:
-        async with conn.cursor() as cur:
-            # 插入 thread_type
-            await cur.execute("""
-                INSERT INTO user_threads (thread_id, user_id, title, thread_type)
-                VALUES (%s, %s, %s, %s)
-            """, (thread_id, user_id, title, thread_type))
-    return {"id": thread_id, "title": title, "messages": []}
-
-# 4. 更新会话时间
-async def db_update_thread_timestamp(thread_id: str):
-    async with pool.connection() as conn:
-        async with conn.cursor() as cur:
-            await cur.execute("""
-                UPDATE user_threads SET updated_at = CURRENT_TIMESTAMP WHERE thread_id = %s
-            """, (thread_id,))
-# 5. 直接更新会话标题的数据库函数
-async def db_update_thread_title(thread_id: str, title: str):
-    """
-    更新指定会话的标题
-    """
-    async with pool.connection() as conn:
-        async with conn.cursor() as cur:
-            await cur.execute("""
-                UPDATE user_threads 
-                SET title = %s, updated_at = CURRENT_TIMESTAMP 
-                WHERE thread_id = %s
-            """, (title, thread_id))
-async def db_get_thread_history(thread_id: str):
-    """
-    通过 LangGraph 的 checkpointer 获取指定 thread_id 的历史消息
-    """
-    # 1. 获取编译好的图
-    graph = await get_graph()
-    
-    # 2. 构造配置
-    config = {"configurable": {"thread_id": thread_id}}
-    
-    # 3. 获取当前状态快照
-    state_snapshot = await graph.aget_state(config)
-    
-    # 4. 提取消息
-    # 如果该 thread_id 不存在或没有历史，values 会是空的
-    messages = state_snapshot.values.get("messages", [])
-    
-    # 5. 格式化为前端需要的 JSON 格式
-    formatted_history = []
-    for msg in messages:
-        # 过滤掉 SystemMessage
-        if isinstance(msg, SystemMessage):
-            continue
-            
-        role = "user" if isinstance(msg, HumanMessage) else "ai"
-        content = msg.content
-        
-        # 过滤掉工具调用请求 (ToolMessage 和含有 tool_calls 的 AIMessage 通常不展示给用户看，除非你想展示调试信息)
-        # 这里我们只展示最终的用户提问和 AI 回答
-        if isinstance(msg, ToolMessage):
-            continue
-        if isinstance(msg, AIMessage) and msg.tool_calls:
-            continue
-        if not content: # 如果内容为空（比如纯工具调用），跳过
-            continue
-            
-        # 简单清洗 XML 标签（防止残留）
-        if isinstance(content, str):
-             if "<tool_call>" in content:
-                continue
-        
-        formatted_history.append({
-            "role": role,
-            "content": content
-        })
-        
-    return formatted_history
-
-# 删除会话及其历史记录
-async def db_delete_thread(thread_id: str, user_id: str):
-    """
-    删除指定的会话，包括元数据和 LangGraph 的历史记录
-    """
-    async with pool.connection() as conn:
-        async with conn.cursor() as cur:
-            # 1. 删除用户会话记录 (确保只能删除属于该用户的会话)
-            #返回被删除的行数，用于判断是否存在或是否有权删除
-            await cur.execute("""
-                DELETE FROM user_threads 
-                WHERE thread_id = %s AND user_id = %s
-            """, (thread_id, user_id))
-            
-            if cur.rowcount == 0:
-                return False # 删除失败（未找到或无权删除）
-
-            # 2. 清理 LangGraph 产生的历史数据 (checkpoints 表等)
-            # 这些表里 thread_id 是主键的一部分
-            await cur.execute("DELETE FROM checkpoints WHERE thread_id = %s", (thread_id,))
-            await cur.execute("DELETE FROM checkpoint_blobs WHERE thread_id = %s", (thread_id,))
-            await cur.execute("DELETE FROM checkpoint_writes WHERE thread_id = %s", (thread_id,))
-            
-            return True

@@ -13,14 +13,14 @@ from fastapi.staticfiles import StaticFiles
 from faster_whisper import WhisperModel
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
+import docx
+import pandas as pd
 
 from app.models import ChatRequest
-from app.core.agent import chat_stream, UNANSWERED_FILE
-from app.core.kb_manager import list_files_in_es, delete_file_from_es, ingest_file, ingest_from_local_path, UPLOAD_DIR, IMAGES_DIR
-from app.core.agent import chat_stream, get_history
+from app.core.kb_manager import list_files_in_es, delete_file_from_es, ingest_file, ingest_from_local_path, UPLOAD_DIR, IMAGES_DIR,parse_pdf_with_layout
+from app.core.agent import chat_stream, pool, UNANSWERED_FILE
 from app.core import video_manager
-from app.core.agent import pool, init_database
-from app.core.agent import db_login_user, db_get_user_threads, db_create_thread, db_update_thread_timestamp, db_get_thread_history,db_update_thread_title,db_delete_thread
+from app.core.history_manager import init_database, db_login_user, db_get_user_threads, db_create_thread, db_update_thread_timestamp, db_get_thread_history,db_update_thread_title,db_delete_thread,get_history
 class LoginRequest(BaseModel):
     username: str
     password: str 
@@ -156,7 +156,7 @@ async def chat_endpoint(request: ChatRequest):
     # 先更新数据库里的时间戳，这样列表排序才会变
     await db_update_thread_timestamp(request.thread_id)
     return StreamingResponse(
-        chat_stream(request.query, request.thread_id),
+        chat_stream(request.query, request.thread_id, request.temp_context),
         media_type="text/event-stream"
     )
 
@@ -478,7 +478,54 @@ async def fetch_history(thread_id: str):
     """
     try:
         history = await get_history(thread_id)
+        print("获取到的历史记录如下：" + history)
         return {"history": history}
     except Exception as e:
         print(f"获取历史记录失败: {e}")
         return JSONResponse(status_code=500, content={"error": str(e)})
+    
+@app.post("/upload-temp-file")
+async def upload_temp_file(file: UploadFile = File(...)):
+    """
+    处理临时上传的文件，提取文本内容返回给前端
+    """
+    ext = file.filename.split(".")[-1].lower()
+    content = ""
+    
+    try:
+        # 1. 处理 PDF (复用你现有的 layout 解析)
+        if ext == "pdf":
+            temp_path = f"temp_{uuid.uuid4()}.pdf"
+            with open(temp_path, "wb") as f:
+                f.write(await file.read())
+            docs = parse_pdf_with_layout(temp_path, file.filename)
+            content = "\n".join([doc.text for doc in docs])
+            os.remove(temp_path) # 清理临时文件
+
+        # 2. 处理 Word
+        elif ext in ["doc", "docx"]:
+            doc = docx.Document(io.BytesIO(await file.read()))
+            content = "\n".join([para.text for para in doc.paragraphs])
+
+        # 3. 处理 Excel
+        elif ext in ["xls", "xlsx"]:
+            df = pd.read_excel(io.BytesIO(await file.read()))
+            content = df.to_csv(index=False) # 转为文本格式供LLM阅读
+
+        # 4. 处理图片 (Base64 编码)
+        elif ext in ["jpg", "jpeg", "png"]:
+            file_data = await file.read()
+            base64_image = base64.b64encode(file_data).decode('utf-8')
+            return JSONResponse({
+                "type": "image",
+                "content": base64_image,
+                "fileName": file.filename
+            })
+
+        return JSONResponse({
+            "type": "text",
+            "content": content,
+            "fileName": file.filename
+        })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"文件解析失败: {str(e)}")
