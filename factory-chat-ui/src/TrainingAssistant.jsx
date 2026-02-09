@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { API_BASE_URL } from "./config";
+import { FileText, Image as ImageIcon } from 'lucide-react';
 
 const API_URL = `${API_BASE_URL}/chat`;
 const VOICE_API_URL = `${API_BASE_URL}/voice`;
@@ -98,6 +99,24 @@ export default function TrainingAssistant({ onBack, userId }) {
     // -----------------------------------------------------------------------
     // 3. 加载单条会话的历史消息
     // -----------------------------------------------------------------------
+    const getFileIcon = (fileName, type) => {
+        const ext = fileName ? fileName.split('.').pop().toLowerCase() : '';
+        const isImage = type === 'image' || ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext);
+
+        if (isImage) {
+            return <ImageIcon size={20} className="text-purple-500" />;
+        }
+        if (['pdf'].includes(ext)) {
+            return <FileText size={20} className="text-red-500" />;
+        }
+        if (['xls', 'xlsx', 'csv'].includes(ext)) {
+            return <FileText size={20} className="text-green-600" />; // 假装有个 Excel 图标，用绿色区分
+        }
+        if (['doc', 'docx'].includes(ext)) {
+            return <FileText size={20} className="text-blue-600" />;
+        }
+        return <Paperclip size={20} className="text-gray-500" />;
+    };
     const loadHistory = async (threadId) => {
         setIsLoading(true);
         setMessages([]); // 切换时先清空当前显示
@@ -280,9 +299,19 @@ export default function TrainingAssistant({ onBack, userId }) {
         if (!textToSend.trim() || isLoading) return;
 
         const finalTempContext = attachedFiles.length > 0 ? attachedFiles : null;
+        const currentFiles = [...attachedFiles]; // 复制当前的文件列表
 
         // 1. 界面立即显示用户消息
-        setMessages(prev => [...prev, { role: 'user', content: textToSend, files: attachedFiles }]);
+        // 构建消息对象
+        const userMessage = {
+            role: "user",
+            content: textToSend,
+            files: currentFiles.map(f => ({
+                name: f.fileName || f.name,
+                type: f.type
+            }))
+        };
+        setMessages(prev => [...prev, userMessage]);
         setInput("");
         setIsLoading(true);
         setAttachedFiles([]);
@@ -324,7 +353,7 @@ export default function TrainingAssistant({ onBack, userId }) {
                 body: JSON.stringify({
                     query: textToSend,
                     thread_id: activeThreadId,
-                    user_id: userId, // 告诉后端是谁在发消息
+                    user_id: userId,
                     temp_context: finalTempContext
                 }),
                 signal: abortControllerRef.current.signal
@@ -526,82 +555,126 @@ export default function TrainingAssistant({ onBack, userId }) {
                             </div>
                         )}
 
-                        {/* 消息渲染部分 */}
                         {messages.map((msg, idx) => {
                             const isLastAiMessage = msg.role === 'ai' && idx === messages.length - 1;
                             // 判断是否正在思考（Loading 且 还没有内容显示）
                             const isThinking = isLastAiMessage && isLoading && !displayedContent;
 
-                            // 决定显示的内容：如果是最后一条且正在加载，显示打字机内容；否则显示完整内容
+                            // 决定显示的内容
                             const contentToShow = isLastAiMessage && (isLoading || isTyping) ? displayedContent : msg.content;
 
                             return (
-                                <div key={idx} className={`flex gap-4 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                    {/* AI 头像 */}
+                                <div key={idx} className={`flex gap-4 mb-6 w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+
+                                    {/* 1. 左侧：AI 头像 (只有 AI 消息才显示在左边) */}
                                     {msg.role === 'ai' && (
                                         <div className="w-8 h-8 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center flex-shrink-0 mt-1">
                                             <Bot size={16} className={`text-blue-600 ${isThinking || isTyping ? 'animate-pulse' : ''}`} />
                                         </div>
                                     )}
 
-                                    {/* 消息气泡 */}
-                                    <div className={`max-w-[85%] p-4 rounded-2xl text-sm leading-7 shadow-sm transition-all duration-300 ${msg.role === 'user'
-                                        ? 'bg-blue-600 text-white rounded-br-none'
-                                        : 'bg-white border border-gray-100 text-gray-800 rounded-bl-none'
-                                        }`}>
-                                        {/* --- 核心修改：如果是思考状态，显示动画；否则显示 Markdown --- */}
-                                        {isThinking ? (
-                                            <div className="flex items-center gap-1.5 h-6 px-2">
-                                                {/* 三个跳动的小球动画 */}
-                                                <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-                                                <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-                                                <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce"></div>
-                                                <span className="text-xs text-gray-400 ml-2">正在查阅知识库...</span>
+                                    {/* 2. 中间核心区：垂直排列 (文件在上，气泡在下) */}
+                                    {/* max-w-[85%] 移到这里，控制整体宽度 */}
+                                    {/* items-end 让用户的文件和气泡都靠右，items-start 让 AI 的都靠左 */}
+                                    <div className={`flex flex-col gap-2 max-w-[85%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+
+                                        {/* 2.1 文件列表 (放在气泡上方) */}
+                                        {msg.files && msg.files.length > 0 && (
+                                            <div className={`flex flex-wrap gap-2 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                                {msg.files.map((file, fIndex) => (
+                                                    <div
+                                                        key={fIndex}
+                                                        className="flex items-center gap-2 bg-white border border-gray-200 px-3 py-2 rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-default"
+                                                    >
+                                                        {/* 图标 */}
+                                                        <div className="shrink-0 p-1 bg-gray-50 rounded-lg">
+                                                            {getFileIcon(file.name, file.type)}
+                                                        </div>
+
+                                                        {/* 文件名信息 */}
+                                                        <div className="flex flex-col min-w-0">
+                                                            <span className="text-xs font-medium text-gray-700 truncate max-w-[180px]">
+                                                                {file.name}
+                                                            </span>
+                                                            <span className="text-[10px] text-gray-400">
+                                                                {file.type === 'image' ? '图片' : '文件'}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                ))}
                                             </div>
-                                        ) : (
-                                            <ReactMarkdown
-                                                components={{
-                                                    img: ({ node, ...props }) => {
-                                                        // --- 🛠️ 核心修复逻辑开始 ---
-                                                        let imgSrc = props.src;
-
-                                                        // 如果链接存在，进行检查和替换
-                                                        if (imgSrc) {
-                                                            // 情况1：后端返回了写死的 localhost 地址 -> 替换为真实 IP
-                                                            if (imgSrc.includes('localhost:8000')) {
-                                                                imgSrc = imgSrc.replace('http://localhost:8000', API_BASE_URL);
-                                                            }
-                                                            // 情况2：后端返回了相对路径 (如 /images/xxx.png) -> 补全 IP
-                                                            else if (imgSrc.startsWith('/images')) {
-                                                                imgSrc = `${API_BASE_URL}${imgSrc}`;
-                                                            }
-                                                        }
-                                                        // --- 🛠️ 核心修复逻辑结束 ---
-
-                                                        return (
-                                                            <img
-                                                                {...props}
-                                                                src={imgSrc} // <--- 这里使用修复后的地址
-                                                                className="max-w-full h-auto rounded-lg shadow-md my-4 border border-gray-200 cursor-zoom-in hover:shadow-lg transition-shadow"
-                                                                onClick={() => window.open(imgSrc, '_blank')} // <--- 点击放大时也使用修复后的地址
-                                                            />
-                                                        );
-                                                    }
-                                                }}
-                                            >
-                                                {contentToShow}
-                                            </ReactMarkdown>
                                         )}
+
+                                        {/* 2.2 消息气泡 (放在文件下方) */}
+                                        <div className={`p-4 rounded-2xl text-sm leading-7 shadow-sm transition-all duration-300 w-fit ${msg.role === 'user'
+                                            ? 'bg-blue-600 text-white rounded-tr-sm' // 用户：右上角直角
+                                            : 'bg-white border border-gray-100 text-gray-800 rounded-tl-sm' // AI：左上角直角
+                                            }`}>
+                                            {/* --- 核心内容显示逻辑 --- */}
+                                            {isThinking ? (
+                                                <div className="flex items-center gap-1.5 h-6 px-2">
+                                                    {/* 三个跳动的小球动画 */}
+                                                    <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                                                    <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                                                    <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce"></div>
+                                                    <span className="text-xs text-gray-400 ml-2">正在查阅知识库...</span>
+                                                </div>
+                                            ) : (
+                                                /* 🌟 修复点：添加一个 div 包裹 ReactMarkdown，并将 className 放在这里 */
+                                                <div className={`prose prose-sm max-w-none ${msg.role === 'user' ? 'prose-invert' : ''}`}>
+                                                    <ReactMarkdown
+                                                        /* 🚫 原来的 className="..." 已被移除 */
+                                                        components={{
+                                                            img: ({ node, ...props }) => {
+                                                                // --- 🛠️ 图片地址修复逻辑 ---
+                                                                let imgSrc = props.src;
+                                                                if (imgSrc) {
+                                                                    if (imgSrc.includes('localhost:8000')) {
+                                                                        imgSrc = imgSrc.replace('http://localhost:8000', API_BASE_URL);
+                                                                    } else if (imgSrc.startsWith('/images')) {
+                                                                        imgSrc = `${API_BASE_URL}${imgSrc}`;
+                                                                    }
+                                                                }
+                                                                // --- 🛠️ 逻辑结束 ---
+
+                                                                return (
+                                                                    <img
+                                                                        {...props}
+                                                                        src={imgSrc}
+                                                                        className="max-w-full h-auto rounded-lg shadow-md my-4 border border-gray-200 cursor-zoom-in hover:shadow-lg transition-shadow"
+                                                                        onClick={() => window.open(imgSrc, '_blank')}
+                                                                    />
+                                                                );
+                                                            },
+                                                            // 修复：代码块样式优化，避免溢出
+                                                            code({ node, inline, className, children, ...props }) {
+                                                                return !inline ? (
+                                                                    <div className="bg-gray-800 text-gray-100 p-2 rounded-md my-2 overflow-x-auto">
+                                                                        <code {...props}>{children}</code>
+                                                                    </div>
+                                                                ) : (
+                                                                    <code className={`${msg.role === 'user' ? 'bg-blue-700' : 'bg-gray-100 text-red-500'} px-1 rounded`} {...props}>
+                                                                        {children}
+                                                                    </code>
+                                                                )
+                                                            }
+                                                        }}
+                                                    >
+                                                        {contentToShow}
+                                                    </ReactMarkdown>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
 
-                                    {/* 用户头像 */}
+                                    {/* 3. 右侧：用户头像 (只有用户消息才显示在右边) */}
                                     {msg.role === 'user' && (
                                         <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0 mt-1">
                                             <User size={16} className="text-gray-500" />
                                         </div>
                                     )}
                                 </div>
-                            )
+                            );
                         })}
                         <div ref={messagesEndRef} />
                     </div>
@@ -720,6 +793,6 @@ export default function TrainingAssistant({ onBack, userId }) {
                     </div>
                 </div>
             </div>
-        </div>
+        </div >
     );
 }

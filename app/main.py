@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from contextlib import asynccontextmanager
 import docx
 import pandas as pd
-
+import base64
 from app.models import ChatRequest
 from app.core.kb_manager import list_files_in_es, delete_file_from_es, ingest_file, ingest_from_local_path, UPLOAD_DIR, IMAGES_DIR,parse_pdf_with_layout
 from app.core.agent import chat_stream, pool, UNANSWERED_FILE
@@ -467,6 +467,7 @@ async def fetch_history(thread_id: str):
     """
     try:
         history = await get_history(thread_id)
+        print(f'获取到的历史记录如下：{history}')
         return {"history": history}
     except Exception as e:
         print(f"获取历史记录失败: {e}")

@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { API_BASE_URL } from "./config";
+import { FileText, Image as ImageIcon } from 'lucide-react';
 
 const API_URL = `${API_BASE_URL}/chat`;
 const VOICE_API_URL = `${API_BASE_URL}/voice`;
@@ -120,7 +121,24 @@ export default function DebugAssistant({ onBack, userId }) {
             setIsLoading(false);
         }
     };
+    const getFileIcon = (fileName, type) => {
+        const ext = fileName ? fileName.split('.').pop().toLowerCase() : '';
+        const isImage = type === 'image' || ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext);
 
+        if (isImage) {
+            return <ImageIcon size={20} className="text-purple-500" />;
+        }
+        if (['pdf'].includes(ext)) {
+            return <FileText size={20} className="text-red-500" />;
+        }
+        if (['xls', 'xlsx', 'csv'].includes(ext)) {
+            return <FileText size={20} className="text-green-600" />; // 假装有个 Excel 图标，用绿色区分
+        }
+        if (['doc', 'docx'].includes(ext)) {
+            return <FileText size={20} className="text-blue-600" />;
+        }
+        return <Paperclip size={20} className="text-gray-500" />;
+    };
     // -----------------------------------------------------------------------
     // 4. 创建新会话
     // -----------------------------------------------------------------------
@@ -285,8 +303,16 @@ export default function DebugAssistant({ onBack, userId }) {
 
         const finalTempContext = attachedFiles.length > 0 ? attachedFiles : null;
 
+        const currentFiles = [...attachedFiles]; // 复制当前的文件列表
+
         // 1. 界面立即显示用户消息
-        setMessages(prev => [...prev, { role: 'user', content: textToSend, files: attachedFiles }]);
+        // 构建消息对象
+        const userMessage = {
+            role: "user",
+            content: textToSend,
+            files: currentFiles.map(f => ({ name: f.name, type: 'file' })) // 格式化一下
+        };
+        setMessages(prev => [...prev, userMessage]);
         setInput("");
         setIsLoading(true);
         setAttachedFiles([]);
@@ -536,7 +562,31 @@ export default function DebugAssistant({ onBack, userId }) {
                                             <Bug size={16} className={`text-purple-600 ${isThinking || isTyping ? 'animate-pulse' : ''}`} />
                                         </div>
                                     )}
+                                    {msg.files && msg.files.length > 0 && (
+                                        <div className={`mb-1.5 flex flex-wrap gap-2 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                            {msg.files.map((file, fIndex) => (
+                                                <div
+                                                    key={fIndex}
+                                                    className="group relative flex items-center gap-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-3 py-2.5 rounded-xl shadow-sm hover:shadow-md transition-all cursor-default max-w-[220px]"
+                                                >
+                                                    {/* 图标容器 */}
+                                                    <div className="p-1.5 bg-gray-50 dark:bg-gray-700 rounded-lg group-hover:bg-gray-100 transition-colors">
+                                                        {getFileIcon(file.name, file.type)}
+                                                    </div>
 
+                                                    {/* 文件名 */}
+                                                    <div className="flex flex-col overflow-hidden">
+                                                        <span className="text-xs font-medium text-gray-700 dark:text-gray-200 truncate">
+                                                            {file.name}
+                                                        </span>
+                                                        <span className="text-[10px] text-gray-400 uppercase">
+                                                            {file.type === 'image' ? 'IMAGE' : file.name.split('.').pop()} FILE
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
                                     <div className={`max-w-[90%] p-4 rounded-2xl text-sm leading-7 shadow-sm transition-all duration-300 ${msg.role === 'user'
                                         ? 'bg-purple-600 text-white rounded-br-none'
                                         : 'bg-gray-50 border border-gray-100 text-gray-800 rounded-bl-none'

@@ -231,40 +231,77 @@ async def db_delete_thread(thread_id: str, user_id: str):
             return True
 
 # 7.获取先前历史记录的函数，供前端展示
-def clean_user_content(content) -> str:
+def parse_files_and_clean_content(content: str):
     """
-    清洗用户消息（同步函数）
-    """
+    功能：
+    1. 从 raw_content 中提取 "【参考文件：xxx】" 的文件名。
+    2. 清洗掉 RAG 提示词上下文，只保留用户的真实问题。
     
-    # 1. 处理 List 类型
-    if isinstance(content, list):
-        text_part = ""
-        for item in content:
-            if isinstance(item, dict) and item.get("type") == "text":
-                text_part = item.get("text", "")
-                break
-        content = text_part
-
+    返回: (cleaned_text, file_list)
+    """
     if not isinstance(content, str):
-        return ""
+        return "", []
 
-    # [调试点 4] 打印原始内容的前 50 个字符，看看长什么样
+    files = []
+    
+    # ---------------------------------------------------------
+    # 1. 提取文件名 (修改点：适配新的 Prompt 格式)
+    # ---------------------------------------------------------
+    
+    # 针对你提供的样本：【参考文件：周计划.xlsx】
+    # 正则解释：
+    # \[ 和 \] 匹配中括号
+    # (.*?) 是非贪婪匹配，提取文件名
+    matches = re.findall(r"【参考文件：(.*?)】", content)
+    
+    for name in matches:
+        # 由于现在统一叫“参考文件”，我们需要根据后缀名判断是否为图片
+        # 这样前端才能显示正确的图标 (ImageIcon 或 FileText)
+        ext = name.split('.')[-1].lower() if '.' in name else ""
+        
+        if ext in ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp']:
+            file_type = "image"
+        else:
+            file_type = "file"
+            
+        files.append({"name": name, "type": file_type})
 
-    # 2. 核心清洗
+    # --- 兼容旧格式 (可选，为了防止有旧数据的遗留) ---
+    # 如果你的系统里还有 "用户上传了图片 xxx" 这种旧格式，可以保留下面这段
+    old_img_matches = re.findall(r"用户上传了图片 (.*?)，", content)
+    for name in old_img_matches:
+        files.append({"name": name, "type": "image"})
+
+    # ---------------------------------------------------------
+    # 2. 清洗文本
+    # ---------------------------------------------------------
+    cleaned_text = content
     marker = "用户的具体问题是："
     
-    # 放宽条件：只要有 marker 就清洗，不检查 "用户上传了..."
     if marker in content:
-        cleaned = content.split(marker)[-1].strip()
-        return cleaned
+        # 截取 marker 之后的内容
+        cleaned_text = content.split(marker)[-1].strip()
+    else:
+        # 如果没有找到 marker，但确实检测到了文件
+        # 说明这可能是一条纯文件发送的消息（没有附带文字问题）
+        # 或者 Prompt 格式不完整。
+        if files:
+            # 策略：如果全是文件上下文且没有 marker，则认为用户没有输入文本
+            # 我们可以尝试过滤掉 prompt 的头部，或者直接返回空字符串让前端只显示文件
+            # 这里简单处理：如果包含 "【参考文件：" 但没找到 marker，为了不显示一大堆乱码，
+            # 我们尽量返回空，或者只返回 marker 之前的一小段（但这很难判断）。
+            # 最稳妥的方式：如果全是 Context 且没 marker，就设为空。
+            if "用户上传了以下参考资料" in content:
+                cleaned_text = "" 
+            pass
 
-    return content.strip()
+    return cleaned_text.strip(), files
 
 async def get_history(thread_id: str):
     """
-    从 PostgreSQL 读取历史
+    从 PostgreSQL 读取历史，并解析出文件信息
     """
-    
+    # 1. 获取 Graph 状态
     graph = await get_graph()
     config = {"configurable": {"thread_id": thread_id}}
     state_snapshot = await graph.aget_state(config)
@@ -275,35 +312,34 @@ async def get_history(thread_id: str):
     messages = state_snapshot.values.get("messages", [])
     
     formatted_history = []
-    for i, msg in enumerate(messages):
+    for msg in messages:
         # 确定角色
         if isinstance(msg, HumanMessage):
             role = "user"
         elif isinstance(msg, AIMessage):
             role = "ai"
         else:
-            # SystemMessage 或 ToolMessage 跳过
             continue
 
         raw_content = msg.content
-
-        # 过滤逻辑
-        if role == "ai" and not raw_content:
-            continue
-        if isinstance(raw_content, str) and "<tool_call>" in raw_content:
-            continue
-            
-        final_content = raw_content
         
-        # 只有 user 消息才调用清洗
-        if role == "user":
-            # 直接调用同步函数
-            final_content = clean_user_content(raw_content)
+        # 过滤空消息
+        if not raw_content:
+            continue
+        
+        # 处理内容
+        final_content = raw_content
+        attached_files = []
 
-        if final_content:
-            formatted_history.append({
-                "role": role,
-                "content": final_content
-            })
-            
+        print(raw_content)
+        if role == "user":
+            # 调用新的解析函数
+            final_content, attached_files = parse_files_and_clean_content(raw_content)
+
+        formatted_history.append({
+            "role": role,
+            "content": final_content,
+            "files": attached_files # 新增字段：文件列表
+        })
+        
     return formatted_history
