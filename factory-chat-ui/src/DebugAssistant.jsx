@@ -122,9 +122,7 @@ export default function DebugAssistant({ onBack, userId }) {
         }
     };
     const getFileIcon = (fileName, type) => {
-        // 关键修复：如果没有文件名，给一个空字符串，防止 .split 报错
-        const safeName = fileName || "";
-        const ext = safeName.split('.').pop().toLowerCase();
+        const ext = fileName ? fileName.split('.').pop().toLowerCase() : '';
         const isImage = type === 'image' || ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext);
 
         if (isImage) {
@@ -580,17 +578,16 @@ export default function DebugAssistant({ onBack, userId }) {
                                                     >
                                                         {/* 图标 */}
                                                         <div className="shrink-0 p-1 bg-gray-50 rounded-lg">
-                                                            {/* 传入 file.name 或 file.fileName 兼容不同数据源 */}
-                                                            {getFileIcon(file.name || file.fileName, file.type)}
+                                                            {getFileIcon(file.name, file.type)}
                                                         </div>
 
                                                         {/* 文件名信息 */}
                                                         <div className="flex flex-col min-w-0">
                                                             <span className="text-xs font-medium text-gray-700 truncate max-w-[180px]">
-                                                                {file.name || file.fileName || "未知文件"}
+                                                                {file.name}
                                                             </span>
                                                             <span className="text-[10px] text-gray-400">
-                                                                {file.type === 'image' ? 'IMAGE' : 'FILE'}
+                                                                {file.type === 'image' ? '图片' : '文件'}
                                                             </span>
                                                         </div>
                                                     </div>
