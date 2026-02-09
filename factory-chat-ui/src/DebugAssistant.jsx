@@ -587,38 +587,61 @@ export default function DebugAssistant({ onBack, userId }) {
                                         {msg.files && msg.files.length > 0 && (
                                             <div className={`flex flex-wrap gap-2 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                                                 {msg.files.map((file, fIndex) => {
-                                                    // 判断是否为图片类型
-                                                    const isImage = file.type === 'image';
+                                                    // 1. 宽松判断图片类型 (兼容 'image', 'image/png' 等)
+                                                    const isImage = file.type && (file.type === 'image' || file.type.startsWith('image'));
 
-                                                    // 如果是图片且有 base64 数据,显示图片预览
-                                                    if (isImage && file.base64) {
+                                                    // 2. 智能获取图片地址
+                                                    let imgSrc = null;
+                                                    if (isImage) {
+                                                        if (file.content) {
+                                                            // 情况A: 后端返回的完整 Base64 (包含 data:image...)
+                                                            imgSrc = file.content;
+                                                        } else if (file.base64) {
+                                                            // 情况B: 旧格式纯 Base64 码
+                                                            imgSrc = `data:image/jpeg;base64,${file.base64}`;
+                                                        } else if (file instanceof File) {
+                                                            // 情况C: 刚上传但在发送前的 File 对象
+                                                            imgSrc = URL.createObjectURL(file);
+                                                        } else if (file.url) {
+                                                            // 情况D: 远程 URL
+                                                            imgSrc = file.url;
+                                                        }
+                                                    }
+
+                                                    // 3. 渲染逻辑：如果是有效图片则显示预览图
+                                                    if (isImage && imgSrc) {
                                                         return (
                                                             <div
                                                                 key={fIndex}
-                                                                className="rounded-xl overflow-hidden border border-gray-200 shadow-sm hover:shadow-md transition-shadow bg-white"
+                                                                className="rounded-xl overflow-hidden border border-gray-200 shadow-sm hover:shadow-md transition-shadow bg-white relative group"
                                                                 style={{ maxWidth: '300px' }}
                                                             >
                                                                 {/* 图片预览 */}
                                                                 <img
-                                                                    src={`data:image/jpeg;base64,${file.base64}`}
-                                                                    alt={file.name}
-                                                                    className="w-full h-auto"
+                                                                    src={imgSrc}
+                                                                    alt={file.name || 'image'}
+                                                                    className="w-full h-auto bg-gray-100"
                                                                     style={{
                                                                         maxHeight: '300px',
                                                                         objectFit: 'contain',
                                                                         display: 'block'
                                                                     }}
+                                                                    // 如果图片加载失败（比如 base64 损坏），隐藏这个元素，避免显示裂图图标
+                                                                    onError={(e) => {
+                                                                        e.target.style.display = 'none';
+                                                                        // 可以选择显示一个 fallback 的文本
+                                                                    }}
                                                                 />
-                                                                {/* 文件名 */}
-                                                                <div className="px-3 py-2 bg-gray-50 border-t border-gray-100">
+                                                                {/* 图片底部的文件名 (半透明层，鼠标悬停更明显) */}
+                                                                <div className="px-3 py-2 bg-gray-50/90 border-t border-gray-100 backdrop-blur-sm">
                                                                     <span className="text-xs text-gray-600 truncate block">
-                                                                        {file.name}
+                                                                        {file.name || "图片预览"}
                                                                     </span>
                                                                 </div>
                                                             </div>
                                                         );
                                                     } else {
-                                                        // 非图片或没有 base64 数据,显示文件图标(保持原逻辑)
+                                                        // 4. 非图片或无数据的图片，显示通用文件卡片
                                                         return (
                                                             <div
                                                                 key={fIndex}
@@ -626,16 +649,17 @@ export default function DebugAssistant({ onBack, userId }) {
                                                             >
                                                                 {/* 图标 */}
                                                                 <div className="shrink-0 p-1 bg-gray-50 rounded-lg">
-                                                                    {getFileIcon(file.name, file.type)}
+                                                                    {/* 如果你有 getFileIcon 函数则保留，没有则用默认图标 */}
+                                                                    {typeof getFileIcon === 'function' ? getFileIcon(file.name, file.type) : <FileText size={20} className="text-gray-400" />}
                                                                 </div>
 
                                                                 {/* 文件名信息 */}
                                                                 <div className="flex flex-col min-w-0">
                                                                     <span className="text-xs font-medium text-gray-700 truncate max-w-[180px]">
-                                                                        {file.name}
+                                                                        {file.name || "未知文件"}
                                                                     </span>
                                                                     <span className="text-[10px] text-gray-400">
-                                                                        {file.type === 'image' ? '图片' : '文件'}
+                                                                        {file.type === 'file' ? '文件' : (file.type || '未知类型')}
                                                                     </span>
                                                                 </div>
                                                             </div>

@@ -231,77 +231,70 @@ async def db_delete_thread(thread_id: str, user_id: str):
             
             return True
 
-def read_image_as_base64(image_path):
-    """辅助函数：安全读取图片并转为 Base64"""
-    if not os.path.exists(image_path):
-        return None
-    try:
-        with open(image_path, "rb") as f:
-            b64_str = base64.b64encode(f.read()).decode('utf-8')
-            ext = image_path.split('.')[-1].lower()
-            return f"data:image/{ext};base64,{b64_str}"
-    except Exception as e:
-        print(f"Error reading image {image_path}: {e}")
+def read_image_as_base64(image_source):
+    """
+    智能读取图片：
+    1. 如果是 Base64 字符串 (data:image...) -> 直接返回
+    2. 如果是纯 Base64 码 (无头) -> 补全头返回
+    3. 如果是文件路径 (存在于磁盘) -> 读取并转 Base64
+    """
+    if not image_source:
         return None
 
-def clean_text_markers(content: str):
+    if image_source.startswith("data:image"):
+        return image_source
+
+    return None
+
+def clean_text_content(content: str):
     """
-    仅负责清洗文本中的【参考文件】标记，不提取文件。
-    用于当我们在其他地方已经提取了文件时（例如从 image_url）。
+    统一的文本清洗函数：
+    1. 强制只保留 '用户的具体问题是:' 之后的内容
+    2. 去除残留的 【参考文件...】 标签
     """
-    if not isinstance(content, str): return content
-    # 去除新格式
+    if not isinstance(content, str): 
+        return ""
+    
+    # 1. 核心修复：强制切割文本
+    marker = "用户的具体问题是:"
+    if marker in content:
+        content = content.split(marker)[-1]
+    
+    # 2. 去除新格式标签
     content = re.sub(r"【参考文件:.*?\|路径:.*?】", "", content)
-    # 去除旧格式
+    # 3. 去除旧格式标签
     content = re.sub(r"【参考文件:.*?】", "", content)
-    # 去除提示词
-    if "用户上传了以下参考资料:" in content:
-        content = content.replace("用户上传了以下参考资料:", "")
+    # 4. 去除提示词前缀
+    content = content.replace("用户上传了以下参考资料:", "")
+    
     return content.strip()
 
-def parse_files_from_text_only(content: str):
+def parse_files_fallback(content: str):
     """
-    仅当 content 是纯字符串时使用的后备方案（兼容旧历史记录）。
+    仅当没有 image_url 时使用的后备方案（从文本正则提取文件）
     """
     files = []
-    cleaned_text = content
     
     # 1. 提取带路径的新格式
     matches_with_path = re.findall(r"【参考文件:(.*?)\|路径:(.*?)】", content)
     for original_name, saved_path in matches_with_path:
-        # 清洗文本
-        cleaned_text = cleaned_text.replace(f"【参考文件:{original_name}|路径:{saved_path}】", "")
-        
-        ext = saved_path.split('.')[-1].lower()
         full_path = os.path.join(IMAGES_DIR, saved_path)
+        b64 = read_image_as_base64(full_path)
         
-        if ext in ['jpg', 'jpeg', 'png', 'webp']:
-            b64 = read_image_as_base64(full_path)
-            if b64:
-                files.append({"name": original_name, "type": "image/png", "content": b64})
+        if b64:
+            files.append({"name": original_name, "type": "image/png", "content": b64})
         else:
             files.append({"name": original_name, "type": "file"})
 
-    # 2. 提取旧格式 (避免重复)
-    old_matches = re.findall(r"【参考文件:(.*?)】", cleaned_text)
+    # 2. 提取旧格式 (防止漏网之鱼)
+    old_matches = re.findall(r"【参考文件:(.*?)】", content)
     for name in old_matches:
-        cleaned_text = cleaned_text.replace(f"【参考文件:{name}】", "")
-        # 如果前面已经加过了，跳过
-        if any(f['name'] == name for f in files): 
-            continue
-        files.append({"name": name, "type": "file"}) # 旧格式无法读取图片内容，只当文件
+        if any(f['name'] == name for f in files): continue
+        files.append({"name": name, "type": "file"}) 
 
-    # 3. 清洗提示词
-    marker = "用户的具体问题是:"
-    if marker in cleaned_text:
-        cleaned_text = cleaned_text.split(marker)[-1]
-    
-    return cleaned_text.strip(), files
+    return files
 
 async def get_history(thread_id: str):
-    """
-    核心逻辑：优先解析 List 类型的多模态消息，避免正则重复解析
-    """
     graph = await get_graph()
     config = {"configurable": {"thread_id": thread_id}}
     state_snapshot = await graph.aget_state(config)
@@ -325,58 +318,76 @@ async def get_history(thread_id: str):
 
         final_content = ""
         attached_files = []
+        full_text_buffer = "" 
+        
+        # 临时存储从 image_url 中提取到的 base64 图片数据
+        found_image_contents = [] 
 
         # =================================================
-        # 情况 A: 内容是列表 (Multimodal - 包含图片)
+        # 1. 第一遍遍历：分离 文本 和 图片数据
         # =================================================
         if isinstance(raw_content, list):
-            has_image_url = False
-            temp_text_parts = []
-
             for item in raw_content:
                 if isinstance(item, dict):
-                    # --- 提取图片 (最高优先级) ---
+                    # --- 提取图片数据 ---
                     if item.get("type") == "image_url":
-                        has_image_url = True
                         img_data = item.get("image_url", {})
                         url_str = img_data.get("url") if isinstance(img_data, dict) else img_data
                         
-                        if url_str:
-                            # 确保 base64 前缀存在
-                            if not url_str.startswith("data:") and not url_str.startswith("http"):
-                                url_str = f"data:image/png;base64,{url_str}"
-                                
-                            attached_files.append({
-                                "name": "image.png", 
-                                "type": "image/png", 
-                                "content": url_str
-                            })
+                        # 调用你的 read_image_as_base64 处理数据
+                        b64_content = read_image_as_base64(url_str)
+                        if b64_content:
+                            found_image_contents.append(b64_content)
                     
                     # --- 提取文本 ---
                     elif item.get("type") == "text":
-                        temp_text_parts.append(item.get("text", ""))
-            
-            # 合并文本
-            full_text = " ".join(temp_text_parts)
-            
-            # 关键逻辑：如果我们已经通过 image_url 拿到了图片，
-            # 那么文本里的【参考文件】标记就是重复的垃圾信息，直接清洗掉，不要再解析文件了
-            if has_image_url:
-                final_content = clean_text_markers(full_text)
-            else:
-                # 如果列表里只有文本(没图片)，才尝试从文本正则提取文件
-                final_content, text_files = parse_files_from_text_only(full_text)
-                attached_files.extend(text_files)
-
-        # =================================================
-        # 情况 B: 内容是纯字符串 (Legacy / 纯文本)
-        # =================================================
+                        full_text_buffer += item.get("text", "")
+        
         elif isinstance(raw_content, str):
-            final_content, attached_files = parse_files_from_text_only(raw_content)
+            full_text_buffer = raw_content
 
-        # 最终清洗：如果只剩下空文本（被清洗掉了）但有文件，就不显示文本
+        # =================================================
+        # 2. 核心修复：从文本中提取文件名，赋给图片
+        # =================================================
+        
+        # 提取所有文件名 (支持两种格式：【参考文件:name|...】 和 【参考文件:name】)
+        # 正则解释：匹配 "【参考文件:" 开头，然后捕获内容直到遇见 "|" 或者 "】"
+        extracted_names = re.findall(r"【参考文件:(.*?)(?:\||】)", full_text_buffer)
+        
+        # 处理从 image_url 找到的图片
+        if found_image_contents:
+            for i, content in enumerate(found_image_contents):
+                # 尝试从提取的文件名列表中取名字，如果取不到（比如图片多于文本标记），就用默认名
+                if i < len(extracted_names):
+                    real_name = extracted_names[i]
+                else:
+                    real_name = f"image_{i+1}.png" # 兜底名称
+                
+                # 确定扩展名 (如果原名有扩展名就用原名的，没有就默认 png)
+                file_type = "image/png"
+                if "." in real_name:
+                    ext = real_name.split(".")[-1].lower()
+                    if ext in ['jpg', 'jpeg', 'gif', 'webp']:
+                        file_type = f"image/{ext}"
+
+                attached_files.append({
+                    "name": real_name,   # 真实文件名
+                    "type": file_type, 
+                    "content": content
+                })
+        else:
+            # 如果没有 image_url，尝试从文本正则加载文件 (后备方案，兼容旧数据)
+            # 注意：parse_files_fallback 可能会重复提取文件名，所以只有在没找到 image_url 时才用
+            fallback_files = parse_files_fallback(full_text_buffer)
+            attached_files.extend(fallback_files)
+
+        # =================================================
+        # 3. 清洗文本
+        # =================================================
+        final_content = clean_text_content(full_text_buffer)
+
+        # 特殊处理：如果清洗后没字了，但有文件，说明是纯文件消息
         if not final_content and attached_files:
-             # 有时候清洗后会留下一堆换行符
              final_content = ""
 
         formatted_history.append({

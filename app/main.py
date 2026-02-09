@@ -467,7 +467,6 @@ async def fetch_history(thread_id: str):
     """
     try:
         history = await get_history(thread_id)
-        print(f'获取到的历史记录如下：{history}')
         return {"history": history}
     except Exception as e:
         print(f"获取历史记录失败: {e}")
