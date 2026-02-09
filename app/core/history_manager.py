@@ -205,56 +205,7 @@ async def db_update_thread_title(thread_id: str, title: str):
                 WHERE thread_id = %s
             """, (title, thread_id))
 
-# 6.获取当前会话历史记录存入数据库
-async def db_get_thread_history(thread_id: str):
-    """
-    通过 LangGraph 的 checkpointer 获取指定 thread_id 的历史消息
-    """
-    # 1. 获取编译好的图
-    graph = await get_graph()
-    
-    # 2. 构造配置
-    config = {"configurable": {"thread_id": thread_id}}
-    
-    # 3. 获取当前状态快照
-    state_snapshot = await graph.aget_state(config)
-    
-    # 4. 提取消息
-    # 如果该 thread_id 不存在或没有历史，values 会是空的
-    messages = state_snapshot.values.get("messages", [])
-    
-    # 5. 格式化为前端需要的 JSON 格式
-    formatted_history = []
-    for msg in messages:
-        # 过滤掉 SystemMessage
-        if isinstance(msg, SystemMessage):
-            continue
-            
-        role = "user" if isinstance(msg, HumanMessage) else "ai"
-        content = msg.content
-        
-        # 过滤掉工具调用请求 (ToolMessage 和含有 tool_calls 的 AIMessage 通常不展示给用户看，除非你想展示调试信息)
-        # 这里我们只展示最终的用户提问和 AI 回答
-        if isinstance(msg, ToolMessage):
-            continue
-        if isinstance(msg, AIMessage) and msg.tool_calls:
-            continue
-        if not content: # 如果内容为空（比如纯工具调用），跳过
-            continue
-            
-        # 简单清洗 XML 标签（防止残留）
-        if isinstance(content, str):
-             if "<tool_call>" in content:
-                continue
-        
-        formatted_history.append({
-            "role": role,
-            "content": content
-        })
-        
-    return formatted_history
-
-# 7.删除会话及其历史记录
+# 6.删除会话及其历史记录
 async def db_delete_thread(thread_id: str, user_id: str):
     """
     删除指定的会话，包括元数据和 LangGraph 的历史记录
@@ -279,17 +230,14 @@ async def db_delete_thread(thread_id: str, user_id: str):
             
             return True
 
-# 8.获取先前历史记录的函数，供前端展示
+# 7.获取先前历史记录的函数，供前端展示
 def clean_user_content(content) -> str:
     """
     清洗用户消息（同步函数）
     """
-    # [调试点 3] 进入清洗函数
-    print(f"--- [DEBUG] 进入 clean_user_content ---", flush=True)
     
     # 1. 处理 List 类型
     if isinstance(content, list):
-        print(f"--- [DEBUG] 检测到 List 内容，尝试提取 text ---", flush=True)
         text_part = ""
         for item in content:
             if isinstance(item, dict) and item.get("type") == "text":
@@ -298,22 +246,17 @@ def clean_user_content(content) -> str:
         content = text_part
 
     if not isinstance(content, str):
-        print(f"--- [DEBUG] 内容不是字符串，跳过 ---", flush=True)
         return ""
 
     # [调试点 4] 打印原始内容的前 50 个字符，看看长什么样
-    print(f"--- [DEBUG] 待清洗内容片段: {content[:50]}... ---", flush=True)
 
     # 2. 核心清洗
     marker = "用户的具体问题是："
     
     # 放宽条件：只要有 marker 就清洗，不检查 "用户上传了..."
     if marker in content:
-        print(f"--- [DEBUG] ✅ 发现标记 '{marker}'，执行截断 ---", flush=True)
         cleaned = content.split(marker)[-1].strip()
         return cleaned
-    else:
-        print(f"--- [DEBUG] ❌ 未发现标记 '{marker}'，保持原样 ---", flush=True)
 
     return content.strip()
 
@@ -321,19 +264,15 @@ async def get_history(thread_id: str):
     """
     从 PostgreSQL 读取历史
     """
-    # [调试点 1] 确认函数被调用
-    print(f"\n====== [DEBUG] 开始获取历史记录 Thread ID: {thread_id} ======", flush=True)
     
     graph = await get_graph()
     config = {"configurable": {"thread_id": thread_id}}
     state_snapshot = await graph.aget_state(config)
     
     if not state_snapshot.values:
-        print(f"====== [DEBUG] 该 Thread 无状态，返回空 ======", flush=True)
         return []
     
     messages = state_snapshot.values.get("messages", [])
-    print(f"====== [DEBUG] 这里的消息总数: {len(messages)} ======", flush=True)
     
     formatted_history = []
     for i, msg in enumerate(messages):
@@ -347,9 +286,6 @@ async def get_history(thread_id: str):
             continue
 
         raw_content = msg.content
-        
-        # [调试点 2] 打印正在处理的消息
-        print(f"   [Msg {i}] Role: {role}, Type: {type(raw_content)}", flush=True)
 
         # 过滤逻辑
         if role == "ai" and not raw_content:
@@ -370,5 +306,4 @@ async def get_history(thread_id: str):
                 "content": final_content
             })
             
-    print(f"====== [DEBUG] 历史记录处理完毕，返回 {len(formatted_history)} 条 ======\n", flush=True)
     return formatted_history

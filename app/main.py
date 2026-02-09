@@ -20,7 +20,7 @@ from app.models import ChatRequest
 from app.core.kb_manager import list_files_in_es, delete_file_from_es, ingest_file, ingest_from_local_path, UPLOAD_DIR, IMAGES_DIR,parse_pdf_with_layout
 from app.core.agent import chat_stream, pool, UNANSWERED_FILE
 from app.core import video_manager
-from app.core.history_manager import init_database, db_login_user, db_get_user_threads, db_create_thread, db_update_thread_timestamp, db_get_thread_history,db_update_thread_title,db_delete_thread,get_history
+from app.core.history_manager import init_database, db_login_user, db_get_user_threads, db_create_thread, db_update_thread_timestamp, db_update_thread_title,db_delete_thread,get_history
 class LoginRequest(BaseModel):
     username: str
     password: str 
@@ -112,17 +112,6 @@ async def get_user_threads_route(user_id: str, thread_type: str = "training"):
     except Exception as e:
         print(f"Error fetching threads: {e}")
         return []
-
-@app.get("/history/{thread_id}")
-async def get_chat_history(thread_id: str):
-    try:
-        # 直接调用 agent.py 里的辅助函数
-        history = await db_get_thread_history(thread_id)
-        return {"history": history}
-    except Exception as e:
-        print(f"Error getting history: {e}")
-        # 如果出错，返回空列表，防止前端崩坏
-        return {"history": []}
 
 # 更新标题的接口
 @app.put("/threads/{thread_id}/title")
@@ -478,7 +467,6 @@ async def fetch_history(thread_id: str):
     """
     try:
         history = await get_history(thread_id)
-        print("获取到的历史记录如下：" + history)
         return {"history": history}
     except Exception as e:
         print(f"获取历史记录失败: {e}")
