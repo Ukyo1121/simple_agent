@@ -122,7 +122,9 @@ export default function DebugAssistant({ onBack, userId }) {
         }
     };
     const getFileIcon = (fileName, type) => {
-        const ext = fileName ? fileName.split('.').pop().toLowerCase() : '';
+        // 关键修复：如果没有文件名，给一个空字符串，防止 .split 报错
+        const safeName = fileName || "";
+        const ext = safeName.split('.').pop().toLowerCase();
         const isImage = type === 'image' || ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext);
 
         if (isImage) {
@@ -556,94 +558,109 @@ export default function DebugAssistant({ onBack, userId }) {
                             const contentToShow = isLastAiMessage && (isLoading || isTyping) ? displayedContent : msg.content;
 
                             return (
-                                <div key={idx} className={`flex gap-4 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                <div key={idx} className={`flex gap-4 mb-6 w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+
+                                    {/* 1. 左侧：AI 头像 (紫色风格) */}
                                     {msg.role === 'ai' && (
                                         <div className="w-8 h-8 rounded-full bg-purple-50 border border-purple-100 flex items-center justify-center flex-shrink-0 mt-1">
-                                            <Bug size={16} className={`text-purple-600 ${isThinking || isTyping ? 'animate-pulse' : ''}`} />
+                                            <Bot size={16} className={`text-purple-600 ${isThinking || isTyping ? 'animate-pulse' : ''}`} />
                                         </div>
                                     )}
-                                    {msg.files && msg.files.length > 0 && (
-                                        <div className={`mb-1.5 flex flex-wrap gap-2 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                            {msg.files.map((file, fIndex) => (
-                                                <div
-                                                    key={fIndex}
-                                                    className="group relative flex items-center gap-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-3 py-2.5 rounded-xl shadow-sm hover:shadow-md transition-all cursor-default max-w-[220px]"
-                                                >
-                                                    {/* 图标容器 */}
-                                                    <div className="p-1.5 bg-gray-50 dark:bg-gray-700 rounded-lg group-hover:bg-gray-100 transition-colors">
-                                                        {getFileIcon(file.name, file.type)}
-                                                    </div>
 
-                                                    {/* 文件名 */}
-                                                    <div className="flex flex-col overflow-hidden">
-                                                        <span className="text-xs font-medium text-gray-700 dark:text-gray-200 truncate">
-                                                            {file.name}
-                                                        </span>
-                                                        <span className="text-[10px] text-gray-400 uppercase">
-                                                            {file.type === 'image' ? 'IMAGE' : file.name.split('.').pop()} FILE
-                                                        </span>
+                                    {/* 2. 中间核心区：垂直排列 (文件在上，气泡在下) */}
+                                    <div className={`flex flex-col gap-2 max-w-[85%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+
+                                        {/* 2.1 文件列表 (放在气泡上方) */}
+                                        {msg.files && msg.files.length > 0 && (
+                                            <div className={`flex flex-wrap gap-2 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                                {msg.files.map((file, fIndex) => (
+                                                    <div
+                                                        key={fIndex}
+                                                        className="flex items-center gap-2 bg-white border border-gray-200 px-3 py-2 rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-default"
+                                                    >
+                                                        {/* 图标 */}
+                                                        <div className="shrink-0 p-1 bg-gray-50 rounded-lg">
+                                                            {/* 传入 file.name 或 file.fileName 兼容不同数据源 */}
+                                                            {getFileIcon(file.name || file.fileName, file.type)}
+                                                        </div>
+
+                                                        {/* 文件名信息 */}
+                                                        <div className="flex flex-col min-w-0">
+                                                            <span className="text-xs font-medium text-gray-700 truncate max-w-[180px]">
+                                                                {file.name || file.fileName || "未知文件"}
+                                                            </span>
+                                                            <span className="text-[10px] text-gray-400">
+                                                                {file.type === 'image' ? 'IMAGE' : 'FILE'}
+                                                            </span>
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                    <div className={`max-w-[90%] p-4 rounded-2xl text-sm leading-7 shadow-sm transition-all duration-300 ${msg.role === 'user'
-                                        ? 'bg-purple-600 text-white rounded-br-none'
-                                        : 'bg-gray-50 border border-gray-100 text-gray-800 rounded-bl-none'
-                                        }`}>
-                                        {isThinking ? (
-                                            <div className="flex items-center gap-1.5 h-6 px-2">
-                                                <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-                                                <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-                                                <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce"></div>
-                                                <span className="text-xs text-gray-400 ml-2">正在分析故障现象与代码日志...</span>
+                                                ))}
                                             </div>
-                                        ) : (
-                                            <ReactMarkdown
-                                                components={{
-                                                    code: ({ node, inline, className, children, ...props }) => {
-                                                        return !inline ? (
-                                                            <pre className="bg-gray-900 text-green-400 p-3 rounded-lg overflow-x-auto my-2 text-xs font-mono border border-gray-700 shadow-inner">
-                                                                <code {...props}>{children}</code>
-                                                            </pre>
-                                                        ) : (
-                                                            <code className="bg-purple-100 text-purple-700 px-1 py-0.5 rounded text-xs font-mono" {...props}>{children}</code>
-                                                        )
-                                                    },
-                                                    img: ({ node, ...props }) => {
-                                                        // --- 同步 TrainingAssistant 的图片修复逻辑 ---
-                                                        let imgSrc = props.src;
-                                                        if (imgSrc) {
-                                                            if (imgSrc.includes('localhost:8000')) {
-                                                                imgSrc = imgSrc.replace('http://localhost:8000', API_BASE_URL);
-                                                            } else if (imgSrc.startsWith('/images')) {
-                                                                imgSrc = `${API_BASE_URL}${imgSrc}`;
-                                                            }
-                                                        }
-                                                        // ----------------------------------------
-                                                        return (
-                                                            <img
-                                                                {...props}
-                                                                src={imgSrc}
-                                                                className="max-w-full h-auto rounded-lg shadow-md my-4 border border-gray-200 cursor-zoom-in hover:shadow-lg transition-shadow"
-                                                                onClick={() => window.open(imgSrc, '_blank')}
-                                                            />
-                                                        );
-                                                    }
-                                                }}
-                                            >
-                                                {contentToShow}
-                                            </ReactMarkdown>
                                         )}
+
+                                        {/* 2.2 消息气泡 (紫色主题) */}
+                                        <div className={`p-4 rounded-2xl text-sm leading-7 shadow-sm transition-all duration-300 w-fit ${msg.role === 'user'
+                                            ? 'bg-purple-600 text-white rounded-tr-sm' // 用户：紫色背景
+                                            : 'bg-white border border-gray-100 text-gray-800 rounded-tl-sm' // AI：白色背景
+                                            }`}>
+                                            {isThinking ? (
+                                                <div className="flex items-center gap-1.5 h-6 px-2">
+                                                    <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                                                    <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                                                    <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce"></div>
+                                                    <span className="text-xs text-gray-400 ml-2">正在分析日志...</span>
+                                                </div>
+                                            ) : (
+                                                <div className={`prose prose-sm max-w-none ${msg.role === 'user' ? 'prose-invert' : ''}`}>
+                                                    <ReactMarkdown
+                                                        components={{
+                                                            img: ({ node, ...props }) => {
+                                                                let imgSrc = props.src;
+                                                                if (imgSrc) {
+                                                                    if (imgSrc.includes('localhost:8000')) {
+                                                                        imgSrc = imgSrc.replace('http://localhost:8000', API_BASE_URL);
+                                                                    } else if (imgSrc.startsWith('/images')) {
+                                                                        imgSrc = `${API_BASE_URL}${imgSrc}`;
+                                                                    }
+                                                                }
+                                                                return (
+                                                                    <img
+                                                                        {...props}
+                                                                        src={imgSrc}
+                                                                        className="max-w-full h-auto rounded-lg shadow-md my-4 border border-gray-200 cursor-zoom-in hover:shadow-lg transition-shadow"
+                                                                        onClick={() => window.open(imgSrc, '_blank')}
+                                                                    />
+                                                                );
+                                                            },
+                                                            // 代码块样式优化 (紫色系高亮)
+                                                            code({ node, inline, className, children, ...props }) {
+                                                                return !inline ? (
+                                                                    <div className="bg-gray-800 text-gray-100 p-2 rounded-md my-2 overflow-x-auto border border-gray-700">
+                                                                        <code {...props}>{children}</code>
+                                                                    </div>
+                                                                ) : (
+                                                                    <code className={`${msg.role === 'user' ? 'bg-purple-700' : 'bg-gray-100 text-purple-600'} px-1 rounded`} {...props}>
+                                                                        {children}
+                                                                    </code>
+                                                                );
+                                                            }
+                                                        }}
+                                                    >
+                                                        {contentToShow}
+                                                    </ReactMarkdown>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
 
+                                    {/* 3. 右侧：用户头像 */}
                                     {msg.role === 'user' && (
                                         <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0 mt-1">
                                             <User size={16} className="text-gray-500" />
                                         </div>
                                     )}
                                 </div>
-                            )
+                            );
                         })}
                         <div ref={messagesEndRef} />
                     </div>
