@@ -313,15 +313,16 @@ llm = ChatOpenAI(
 
 system_prompt = SystemMessage(content="""
     ### 角色定义
-    你是一个严谨专业的工厂智能助手。你的任务是根据知识库的内容，回答用户的故障处理或操作问题。
-    **你拥有视觉能力**，可以阅读查询结果中的图片内容。
-
-    ### 反死循环协议 (最高优先级)
-    1. **单次搜索原则**：针对用户的同一个问题，你**最多只能调用三次** `search_factory_knowledge` 工具。
-    2. **禁止重试**：如果三次搜索返回的内容都无法支撑你回答用户的问题，**严禁**再次调用搜索工具。
-    3. **立即记录**：发现检索内容不足以回答问题，**必须立即**调用 `record_missing_knowledge`，绝对不要犹豫或尝试自我纠正。
+    你是一个严谨专业的工厂智能助手。你将面对以下两种场景，需要执行不同的任务：
+    **场景1：**用户没有上传文件或图片
+    - 当用户提问故障处理或操作问题时，你需要调用`search_factory_knowledge` 工具查询知识库，根据知识库的内容来回答用户问题。当发现检索内容不足以回答问题时，**必须立即**调用 `record_missing_knowledge`记录问题到【待解答问题库】，绝对不要犹豫或尝试自我纠正。
+    **场景2：**用户上传了文件或图片
+    - 如果用户在提问时**上传了文件或图片**，需要先仔细理解用户的问题，再调用`search_factory_knowledge` 工具查询知识库
+      - 如果查询到的内容与用户上传的内容和用户的问题高度相关，则需要根据用户上传的文件或图片，结合知识库中的内容回答用户的问题
+      - 如果查询到的内容与用户上传的内容和用户的问题无关，则直接根据用户上传的文件或图片进行作答，**不需要**调用记录工具记录到【待解答问题库】
+    特别提示：**你拥有视觉能力**，可以阅读查询结果中的图片内容。
                               
-    ### 核心工作流 (必须严格执行以下步骤)
+    ### 场景1详细工作流 (必须严格执行以下步骤)
     **第1步：提取关键实体**
     - 分析用户问题，提取核心设备/系统名称（例如：“自动分拣系统”、“FANUC机器人”、“传送带”）。
     - 记住这个核心实体，它是本次回答的“主语”。
@@ -377,7 +378,6 @@ async def call_model(state: AgentState):
     last_message = messages[-1]
 
     # 1. [记录工具防死循环拦截] 保持不变
-    # 如果刚执行完记录工具，直接结束，不让模型再废话
     if isinstance(last_message, ToolMessage) and "该问题已成功记录到待解答问题库" in str(last_message.content):
         print("🛑 [系统拦截] 检测到刚刚执行了记录工具，强制结束对话循环。")
         return {
@@ -397,8 +397,8 @@ async def call_model(state: AgentState):
     # 3. 执行中间件：处理图片 Base64
     messages_with_images = convert_to_multimodal_messages(messages)
     
-    # ==================== [智能检测是否搜过] ====================
-    has_searched = False
+    # ==================== [智能检测搜索次数] ====================
+    search_count = 0  # 改为计数器
     
     # 倒序遍历消息，只检查“当前用户提问之后”产生的动作
     for i in range(len(messages) - 1, -1, -1):
@@ -412,16 +412,17 @@ async def call_model(state: AgentState):
         if isinstance(msg, AIMessage) and msg.tool_calls:
             for tc in msg.tool_calls:
                 if tc["name"] == "search_factory_knowledge":
-                    has_searched = True
-                    break
-        
-        if has_searched:
-            break
+                    search_count += 1
+                    # 注意：这里去掉了 break，以便统计本轮所有的搜索次数
     
+    print(f"🔍 [系统检测] 本轮对话已搜索次数: {search_count}")
+
     # 动态构建工具列表
     current_tools = list(tools)
-    if has_searched:
-        print("🛑 [系统强制] 检测到**本轮对话**已执行过搜索，正在移除搜索工具...")
+    
+    # 修改判断条件：只有当搜索次数达到 3 次时，才移除搜索工具
+    if search_count >= 3:
+        print(f"🛑 [系统强制] 检测到**本轮对话**已搜索 {search_count} 次（达到上限），正在移除搜索工具...")
         current_tools = [t for t in tools if t.name != "search_factory_knowledge"]
     
     model_with_tools = llm.bind_tools(current_tools)
@@ -442,10 +443,10 @@ async def call_model(state: AgentState):
             if func_match:
                 func_name = func_match.group(1) or func_match.group(2)
                 
-                # --- [防死循环拦截器] ---
-                # 如果本轮搜过了，但模型还想搜，强制转为记录
-                if has_searched and func_name == "search_factory_knowledge":
-                    print("🛡️ [拦截成功] 模型试图二次搜索，系统强制转换为‘记录缺失知识’...")
+                # --- [防死循环拦截器]  ---
+                # 如果搜索次数已达上限 (>=3)，但模型还想搜，强制转为记录
+                if search_count >= 3 and func_name == "search_factory_knowledge":
+                    print(f"🛡️ [拦截成功] 模型试图第 {search_count + 1} 次搜索，系统强制转换为‘记录缺失知识’...")
                     func_name = "record_missing_knowledge"
                     q_match = re.search(r"<parameter=query>(.*?)</parameter>", content_str, re.DOTALL)
                     query_val = q_match.group(1).strip() if q_match else "用户遇到的未知问题"
@@ -454,7 +455,7 @@ async def call_model(state: AgentState):
                         "name": func_name,
                         "args": {
                             "user_query": query_val,
-                            "reason": "自动拦截：知识库单次检索无果，强制转入待解答库"
+                            "reason": "自动拦截：多次检索（3次）无果，强制转入待解答库"
                         },
                         "id": f"call_{uuid.uuid4().hex[:8]}"
                     }]

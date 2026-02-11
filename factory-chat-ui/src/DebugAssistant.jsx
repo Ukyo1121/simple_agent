@@ -6,6 +6,7 @@ import {
 import ReactMarkdown from 'react-markdown';
 import { API_BASE_URL } from "./config";
 import { FileText, Image as ImageIcon } from 'lucide-react';
+import remarkGfm from 'remark-gfm';
 
 const API_URL = `${API_BASE_URL}/chat`;
 const VOICE_API_URL = `${API_BASE_URL}/voice`;
@@ -605,14 +606,10 @@ export default function DebugAssistant({ onBack, userId }) {
                                                     }
 
                                                     // 3. 智能获取文件下载地址 (downloadUrl)
-                                                    // 逻辑: 优先用 file.url (历史记录), 其次用 file.savedPath (刚发送成功), 最后是 null
                                                     let downloadUrl = null;
                                                     if (file.url) {
-                                                        // 如果是相对路径 (/files/...), 拼上 API_BASE_URL
                                                         downloadUrl = file.url.startsWith('http') ? file.url : `${API_BASE_URL}${file.url}`;
                                                     } else if (file.savedPath) {
-                                                        // 刚上传成功，后端返回了 savedPath (例如 "doc_xxx.pdf")
-                                                        // 假设后端挂载点是 /files/，手动拼接完整 URL
                                                         downloadUrl = `${API_BASE_URL}/files/${file.savedPath}`;
                                                     }
 
@@ -637,9 +634,15 @@ export default function DebugAssistant({ onBack, userId }) {
                                                                     <span className="text-xs text-gray-600 truncate block max-w-[150px]">
                                                                         {file.name || "图片预览"}
                                                                     </span>
-                                                                    {/* 如果有下载链接，给图片也加个下载按钮 */}
+                                                                    {/* 如果有下载链接，给图片也加个下载按钮 (修改：蓝色 -> 紫色) */}
                                                                     {downloadUrl && (
-                                                                        <a href={downloadUrl} download={file.name} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-700">
+                                                                        <a
+                                                                            href={downloadUrl}
+                                                                            download={file.name}
+                                                                            target="_blank"
+                                                                            rel="noopener noreferrer"
+                                                                            className="text-purple-500 hover:text-purple-700"
+                                                                        >
                                                                             <FileText size={14} />
                                                                         </a>
                                                                     )}
@@ -654,25 +657,34 @@ export default function DebugAssistant({ onBack, userId }) {
                                                                 href={downloadUrl || "#"}
                                                                 target={downloadUrl ? "_blank" : undefined}
                                                                 rel="noopener noreferrer"
-                                                                download={file.name} // 尝试触发浏览器下载
-                                                                className={`flex items-center gap-2 bg-white border border-gray-200 px-3 py-2 rounded-xl shadow-sm transition-all cursor-default ${downloadUrl ? "hover:shadow-md hover:border-blue-300 cursor-pointer group" : "opacity-80"
+                                                                download={file.name}
+                                                                className={`flex items-center gap-2 bg-white border border-gray-200 px-3 py-2 rounded-xl shadow-sm transition-all cursor-default 
+                            ${downloadUrl
+                                                                        ? "hover:shadow-md hover:border-purple-300 cursor-pointer group" // 修改：hover边框变紫
+                                                                        : "opacity-80"
                                                                     }`}
                                                                 onClick={(e) => {
                                                                     if (!downloadUrl) e.preventDefault();
                                                                 }}
                                                             >
-                                                                {/* 图标 */}
-                                                                <div className={`shrink-0 p-1 rounded-lg ${downloadUrl ? "bg-blue-50 text-blue-500 group-hover:text-blue-600" : "bg-gray-50 text-gray-400"}`}>
+                                                                {/* 图标 (修改：背景和图标颜色变紫) */}
+                                                                <div className={`shrink-0 p-1 rounded-lg ${downloadUrl
+                                                                    ? "bg-purple-50 text-purple-500 group-hover:text-purple-600"
+                                                                    : "bg-gray-50 text-gray-400"
+                                                                    }`}>
                                                                     <FileText size={20} />
                                                                 </div>
 
                                                                 {/* 文件名信息 */}
                                                                 <div className="flex flex-col min-w-0 text-left">
-                                                                    <span className={`text-xs font-medium truncate max-w-[180px] ${downloadUrl ? "text-blue-700 group-hover:text-blue-800" : "text-gray-700"}`}>
+                                                                    {/* 修改：文件名文字变紫 */}
+                                                                    <span className={`text-xs font-medium truncate max-w-[180px] ${downloadUrl
+                                                                        ? "text-purple-700 group-hover:text-purple-800"
+                                                                        : "text-gray-700"
+                                                                        }`}>
                                                                         {file.name || "未知文件"}
                                                                     </span>
                                                                     <span className="text-[10px] text-gray-400">
-                                                                        {/* 状态显示: 如果有链接显示'点击下载'，否则显示'上传中/文件' */}
                                                                         {file.type === 'file' ? (downloadUrl ? '点击下载' : '处理中...') : file.type}
                                                                     </span>
                                                                 </div>
@@ -698,6 +710,7 @@ export default function DebugAssistant({ onBack, userId }) {
                                             ) : (
                                                 <div className={`prose prose-sm max-w-none ${msg.role === 'user' ? 'prose-invert' : ''}`}>
                                                     <ReactMarkdown
+                                                        remarkPlugins={[remarkGfm]}
                                                         components={{
                                                             img: ({ node, ...props }) => {
                                                                 let imgSrc = props.src;
@@ -728,7 +741,34 @@ export default function DebugAssistant({ onBack, userId }) {
                                                                         {children}
                                                                     </code>
                                                                 );
-                                                            }
+                                                            },
+                                                            // --- 自定义表格样式 ---
+                                                            table: ({ node, ...props }) => (
+                                                                <div className="overflow-x-auto my-2 rounded-lg border border-gray-200">
+                                                                    <table className="min-w-full divide-y divide-gray-200 text-sm" {...props} />
+                                                                </div>
+                                                            ),
+                                                            thead: ({ node, ...props }) => (
+                                                                <thead className="bg-purple-50" {...props} /> // 表头用淡紫色背景
+                                                            ),
+                                                            tbody: ({ node, ...props }) => (
+                                                                <tbody className="bg-white divide-y divide-gray-200" {...props} />
+                                                            ),
+                                                            tr: ({ node, ...props }) => (
+                                                                <tr className="hover:bg-gray-50 transition-colors" {...props} />
+                                                            ),
+                                                            th: ({ node, ...props }) => (
+                                                                <th className="px-4 py-3 text-left text-xs font-medium text-purple-800 uppercase tracking-wider font-bold" {...props} />
+                                                            ),
+                                                            td: ({ node, ...props }) => (
+                                                                <td className="px-4 py-2 whitespace-nowrap text-gray-700" {...props} />
+                                                            ),
+                                                            // --- 优化其他元素样式 ---
+                                                            p: ({ node, ...props }) => <p className="mb-2 last:mb-0" {...props} />,
+                                                            a: ({ node, ...props }) => <a className="text-blue-600 hover:underline" target="_blank" {...props} />,
+                                                            ul: ({ node, ...props }) => <ul className="list-disc list-inside mb-2" {...props} />,
+                                                            ol: ({ node, ...props }) => <ol className="list-decimal list-inside mb-2" {...props} />,
+                                                            li: ({ node, ...props }) => <li className="mb-1" {...props} />,
                                                         }}
                                                     >
                                                         {contentToShow}

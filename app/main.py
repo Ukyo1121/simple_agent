@@ -20,10 +20,18 @@ from app.models import ChatRequest
 from app.core.kb_manager import list_files_in_es, delete_file_from_es, ingest_file, ingest_from_local_path, UPLOAD_DIR, IMAGES_DIR,parse_pdf_with_layout
 from app.core.agent import chat_stream, pool, UNANSWERED_FILE
 from app.core import video_manager
+from app.core.image_repo import ImageRepository
 from app.core.history_manager import init_database, db_login_user, db_get_user_threads, db_create_thread, db_update_thread_timestamp, db_update_thread_title,db_delete_thread,get_history
+import logging
+from pathlib import Path
 
-IMAGES_DIR = "./factory_images"
-FILES_DIR = "./factory_files"  
+# 配置日志记录器
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+IMAGES_DIR = Path("./factory_images")
+COLLECT_IMAGES_DIR = Path("./collect_images")
+FILES_DIR = Path("./factory_files") 
 if not os.path.exists(FILES_DIR):
     os.makedirs(FILES_DIR)
     
@@ -45,8 +53,10 @@ except Exception as e:
     print(f"语音模型加载失败: {e}")
     voice_model = None
 # 定义生命周期管理器
+image_repo = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global image_repo
     # --- 启动时运行 ---
     print("🚀 [System] 正在启动数据库连接池...")
     try:
@@ -54,6 +64,7 @@ async def lifespan(app: FastAPI):
         # 等待连接就绪
         await pool.wait()
         await init_database()
+        image_repo = ImageRepository(pool)
         print("✅ [System] 数据库连接池已就绪")
     except Exception as e:
         print(f"❌ [System] 数据库连接失败: {e}")
@@ -71,11 +82,11 @@ app = FastAPI(title="智能分拣助手 API", version="2.0",lifespan=lifespan)
 
 app.mount("/files", StaticFiles(directory=UPLOAD_DIR), name="files")
 app.mount("/images", StaticFiles(directory=IMAGES_DIR), name="images")
+app.mount("/collect_images", StaticFiles(directory=COLLECT_IMAGES_DIR), name="collect_images")
 app.mount("/chatfiles", StaticFiles(directory=FILES_DIR), name="chatfiles")
 
 app.mount("/videos", StaticFiles(directory=video_manager.VIDEOS_DIR), name="videos")
 app.mount("/thumbnails", StaticFiles(directory=video_manager.THUMBNAILS_DIR), name="thumbnails")
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -577,3 +588,54 @@ async def upload_temp_file(file: UploadFile = File(...)):
         })
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"文件解析失败: {str(e)}")
+
+# 图片采集
+@app.post("/collect/upload")
+async def upload_and_annotate_image(
+    file: UploadFile = File(...),
+    annotation: str = Form(...) # 使用 Form 来接收同一次请求中的文本数据 Let users provide a text annotation
+):
+    """
+    上传图片并保存标注信息到数据库。
+    """
+    if not image_repo:
+        raise HTTPException(status_code=503, detail="Image repository not initialized")
+
+    try:
+        # 1. 保存文件到磁盘 (复用原有的上传目录)
+        file_path = COLLECT_IMAGES_DIR / file.filename
+        with file_path.open("wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        logger.info(f"Collected image saved to: {file_path}")
+
+        # 2. 生成相对路径供前端访问
+        # 注意：这里存的是 URL 路径部分，不是操作系统的绝对路径
+        relative_url_path = f"collect_images/{file.filename}"
+
+        # 3. 保存元数据和标注到数据库
+        image_id = await image_repo.save_image_annotation(
+            filename=file.filename,
+            file_path=relative_url_path,
+            annotation=annotation
+        )
+
+        return JSONResponse(content={
+            "message": "Image and annotation collected successfully",
+            "id": image_id,
+            "file_path": relative_url_path
+        }, status_code=200)
+
+    except Exception as e:
+        logger.error(f"Error during image collection: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/collect/list")
+async def list_collected_images():
+    """
+    获取最近采集的图片列表。
+    """
+    if not image_repo:
+        raise HTTPException(status_code=503, detail="Image repository not initialized")
+    
+    images = await image_repo.get_recent_images(limit=30)
+    return JSONResponse(content={"images": images}, status_code=200)

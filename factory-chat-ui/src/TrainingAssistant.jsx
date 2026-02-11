@@ -6,6 +6,7 @@ import {
 import ReactMarkdown from 'react-markdown';
 import { API_BASE_URL } from "./config";
 import { FileText, Image as ImageIcon } from 'lucide-react';
+import remarkGfm from 'remark-gfm';
 
 const API_URL = `${API_BASE_URL}/chat`;
 const VOICE_API_URL = `${API_BASE_URL}/voice`;
@@ -596,6 +597,25 @@ export default function TrainingAssistant({ onBack, userId }) {
                                                     // 1. 宽松判断图片类型
                                                     const isImage = file.type && (file.type === 'image' || file.type.startsWith('image'));
 
+                                                    const getFixedUrl = (originalUrl) => {
+                                                        if (!originalUrl) return null;
+                                                        if (originalUrl.startsWith('http')) return originalUrl; // 已经是完整链接
+
+                                                        // 如果已经是 /images/ 开头，直接拼接 BaseUrl
+                                                        if (originalUrl.startsWith('/images/') || originalUrl.startsWith('images/')) {
+                                                            return `${API_BASE_URL}${originalUrl.startsWith('/') ? originalUrl : '/' + originalUrl}`;
+                                                        }
+
+                                                        if (isImage || /\.(jpg|jpeg|png|gif|webp|bmp)$/i.test(file.name || '')) {
+                                                            // 防止 originalUrl 自带 '/' 导致双斜杠，先去掉开头的 '/'
+                                                            const cleanName = originalUrl.startsWith('/') ? originalUrl.slice(1) : originalUrl;
+                                                            return `${API_BASE_URL}/images/${cleanName}`;
+                                                        }
+
+                                                        // 其他情况（如 /files/），按原样拼接
+                                                        return `${API_BASE_URL}${originalUrl.startsWith('/') ? originalUrl : '/' + originalUrl}`;
+                                                    };
+
                                                     // 2. 智能获取图片预览地址 (imgSrc)
                                                     let imgSrc = null;
                                                     if (isImage) {
@@ -606,7 +626,8 @@ export default function TrainingAssistant({ onBack, userId }) {
                                                         } else if (file instanceof File) {
                                                             imgSrc = URL.createObjectURL(file); // 本地预览
                                                         } else if (file.url) {
-                                                            imgSrc = file.url;
+                                                            // 使用修复后的 URL
+                                                            imgSrc = getFixedUrl(file.url);
                                                         }
                                                     }
 
@@ -704,10 +725,10 @@ export default function TrainingAssistant({ onBack, userId }) {
                                                     <span className="text-xs text-gray-400 ml-2">正在查阅知识库...</span>
                                                 </div>
                                             ) : (
-                                                /* 🌟 修复点：添加一个 div 包裹 ReactMarkdown，并将 className 放在这里 */
+                                                /* 添加一个 div 包裹 ReactMarkdown，并将 className 放在这里 */
                                                 <div className={`prose prose-sm max-w-none ${msg.role === 'user' ? 'prose-invert' : ''}`}>
                                                     <ReactMarkdown
-                                                        /* 🚫 原来的 className="..." 已被移除 */
+                                                        remarkPlugins={[remarkGfm]}
                                                         components={{
                                                             img: ({ node, ...props }) => {
                                                                 // --- 🛠️ 图片地址修复逻辑 ---
@@ -741,7 +762,34 @@ export default function TrainingAssistant({ onBack, userId }) {
                                                                         {children}
                                                                     </code>
                                                                 )
-                                                            }
+                                                            },
+                                                            // --- 自定义表格样式 ---
+                                                            table: ({ node, ...props }) => (
+                                                                <div className="overflow-x-auto my-2 rounded-lg border border-gray-200">
+                                                                    <table className="min-w-full divide-y divide-gray-200 text-sm" {...props} />
+                                                                </div>
+                                                            ),
+                                                            thead: ({ node, ...props }) => (
+                                                                <thead className="bg-blue-50" {...props} /> // 表头用淡蓝色背景
+                                                            ),
+                                                            tbody: ({ node, ...props }) => (
+                                                                <tbody className="bg-white divide-y divide-gray-200" {...props} />
+                                                            ),
+                                                            tr: ({ node, ...props }) => (
+                                                                <tr className="hover:bg-gray-50 transition-colors" {...props} />
+                                                            ),
+                                                            th: ({ node, ...props }) => (
+                                                                <th className="px-4 py-3 text-left text-xs font-medium text-blue-800 uppercase tracking-wider font-bold" {...props} />
+                                                            ),
+                                                            td: ({ node, ...props }) => (
+                                                                <td className="px-4 py-2 whitespace-nowrap text-gray-700" {...props} />
+                                                            ),
+                                                            // --- 优化其他元素样式 ---
+                                                            p: ({ node, ...props }) => <p className="mb-2 last:mb-0" {...props} />,
+                                                            a: ({ node, ...props }) => <a className="text-blue-600 hover:underline" target="_blank" {...props} />,
+                                                            ul: ({ node, ...props }) => <ul className="list-disc list-inside mb-2" {...props} />,
+                                                            ol: ({ node, ...props }) => <ol className="list-decimal list-inside mb-2" {...props} />,
+                                                            li: ({ node, ...props }) => <li className="mb-1" {...props} />,
                                                         }}
                                                     >
                                                         {contentToShow}

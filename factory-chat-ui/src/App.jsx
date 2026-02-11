@@ -3,7 +3,7 @@ import {
     GraduationCap, Archive, BarChart2, Bug,
     Database, ClipboardList, ArrowLeft, Factory,
     ArrowRight, Activity, Server, ShieldCheck, Cpu, Sparkles,
-    Video, MessageSquare, User, LogOut, Loader2
+    Video, MessageSquare, User, LogOut, Loader2, Images
 } from 'lucide-react';
 import TrainingAssistant from './TrainingAssistant';
 import TrainingVideoManager from './TrainingVideoManager';
@@ -11,12 +11,14 @@ import DebugAssistant from './DebugAssistant';
 import LifecycleDashboard from './components/LifecycleDashboard';
 import KnowledgeModal from './components/KnowledgeModal';
 import UnansweredModal from './components/UnansweredModal';
+import ImageCollection from './components/ImageCollection';
 import { API_BASE_URL } from './config';
 
 export default function App() {
     const [currentModule, setCurrentModule] = useState('home');
     const [isKbOpen, setIsKbOpen] = useState(false);
     const [isUnansweredOpen, setIsUnansweredOpen] = useState(false);
+
     const [user, setUser] = useState(null);
     const [usernameInput, setUsernameInput] = useState("");
     const [passwordInput, setPasswordInput] = useState(""); // 新增密码状态
@@ -416,6 +418,36 @@ export default function App() {
                         <ArrowRight size={18} />
                     </div>
                 </button>
+
+                <button
+                    onClick={() => setCurrentModule('image_collection')}
+                    className="group relative flex flex-col items-center p-10 bg-white/80 backdrop-blur-sm rounded-3xl border border-slate-200 shadow-lg hover:shadow-xl hover:-translate-y-2 transition-all duration-300 text-center overflow-hidden"
+                >
+                    {/* 悬停时的绿色渐变背景光晕 */}
+                    <div className="absolute inset-0 bg-gradient-to-br from-emerald-50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+
+                    {/* 图标容器 - 翠绿色渐变 */}
+                    <div className="relative z-10 w-20 h-20 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-2xl flex items-center justify-center text-white mb-6 shadow-lg shadow-emerald-200 group-hover:scale-105 transition-transform">
+                        <Images size={32} />
+                    </div>
+
+                    {/* 标题 */}
+                    <h3 className="relative text-2xl font-bold text-slate-800 mb-3">图片采集库 (Gallery)</h3>
+
+                    {/* 描述文本 */}
+                    <p className="relative text-slate-600 leading-relaxed mb-8">
+                        上传并标注工业现场图片，构建多模态知识基座。
+                        <br />
+                        积累视觉数据，让 AI 读懂复杂的图纸与设备。
+                    </p>
+
+                    {/* 底部链接 - 绿色文本和箭头 */}
+                    <div className="relative mt-auto flex items-center gap-2 text-emerald-600 font-semibold group-hover:gap-3 transition-all">
+                        <span>进入图库</span>
+                        <ArrowRight size={18} />
+                    </div>
+                </button>
+
             </div>
 
             {/* 挂载弹窗 */}
@@ -438,6 +470,8 @@ export default function App() {
             return <LifecycleDashboard isOpen={true} onClose={() => setCurrentModule('home')} />;
         case 'collection':
             return renderCollectionMenu();
+        case 'image_collection':
+            return <ImageCollection onBack={() => setCurrentModule('collection')} />;
         default:
             return renderHome();
     }
