@@ -370,7 +370,7 @@ export default function App() {
                 <p className="text-slate-600 mt-4 text-lg">请选择您要进行的数据操作类型</p>
             </div>
 
-            <div className="relative z-10 grid grid-cols-1 md:grid-cols-2 gap-8 max-w-5xl w-full animate-fade-in-up">
+            <div className="relative z-10 grid grid-cols-1 md:grid-cols-3 gap-8 max-w-7xl w-full animate-fade-in-up">
                 {/* 主动收集卡片 */}
                 <button
                     onClick={() => setIsKbOpen(true)}
@@ -419,6 +419,7 @@ export default function App() {
                     </div>
                 </button>
 
+                {/* 图片收集卡片 */}
                 <button
                     onClick={() => setCurrentModule('image_collection')}
                     className="group relative flex flex-col items-center p-10 bg-white/80 backdrop-blur-sm rounded-3xl border border-slate-200 shadow-lg hover:shadow-xl hover:-translate-y-2 transition-all duration-300 text-center overflow-hidden"
@@ -436,9 +437,9 @@ export default function App() {
 
                     {/* 描述文本 */}
                     <p className="relative text-slate-600 leading-relaxed mb-8">
-                        上传并标注工业现场图片，构建多模态知识基座。
+                        上传并标注工业现场图片，构建数据库。
                         <br />
-                        积累视觉数据，让 AI 读懂复杂的图纸与设备。
+                        积累视觉数据，让模型读懂复杂图纸与设备。
                     </p>
 
                     {/* 底部链接 - 绿色文本和箭头 */}
