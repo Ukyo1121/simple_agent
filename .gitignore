@@ -11,6 +11,7 @@ __pycache__/
 # 忽略本地图片和文档
 factory_images/
 factory_docs/
+collect_images/
 
 # 忽略本地下载的模型
 models/
