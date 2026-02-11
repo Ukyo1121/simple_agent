@@ -21,6 +21,12 @@ from app.core.kb_manager import list_files_in_es, delete_file_from_es, ingest_fi
 from app.core.agent import chat_stream, pool, UNANSWERED_FILE
 from app.core import video_manager
 from app.core.history_manager import init_database, db_login_user, db_get_user_threads, db_create_thread, db_update_thread_timestamp, db_update_thread_title,db_delete_thread,get_history
+
+IMAGES_DIR = "./factory_images"
+FILES_DIR = "./factory_files"  
+if not os.path.exists(FILES_DIR):
+    os.makedirs(FILES_DIR)
+    
 class LoginRequest(BaseModel):
     username: str
     password: str 
@@ -65,6 +71,7 @@ app = FastAPI(title="智能分拣助手 API", version="2.0",lifespan=lifespan)
 
 app.mount("/files", StaticFiles(directory=UPLOAD_DIR), name="files")
 app.mount("/images", StaticFiles(directory=IMAGES_DIR), name="images")
+app.mount("/chatfiles", StaticFiles(directory=FILES_DIR), name="chatfiles")
 
 app.mount("/videos", StaticFiles(directory=video_manager.VIDEOS_DIR), name="videos")
 app.mount("/thumbnails", StaticFiles(directory=video_manager.THUMBNAILS_DIR), name="thumbnails")
@@ -481,26 +488,73 @@ async def upload_temp_file(file: UploadFile = File(...)):
     content = ""
     
     try:
-        # 1. 处理 PDF (复用你现有的 layout 解析)
+        # 1. 处理 PDF
         if ext == "pdf":
-            temp_path = f"temp_{uuid.uuid4()}.pdf"
-            with open(temp_path, "wb") as f:
-                f.write(await file.read())
-            docs = parse_pdf_with_layout(temp_path, file.filename)
-            content = "\n".join([doc.text for doc in docs])
-            os.remove(temp_path) # 清理临时文件
+            # A. 保存文件
+            saved_filename = f"doc_{uuid.uuid4().hex}.pdf"
+            saved_path = os.path.join(FILES_DIR, saved_filename)
+            
+            file_data = await file.read()
+            with open(saved_path, "wb") as f:
+                f.write(file_data)
+            
+            # B. 解析文本
+            docs = parse_pdf_with_layout(saved_path, file.filename)
+            text_content = "\n".join([doc.text for doc in docs])
+            
+            # C. 返回 JSON (包含文本和路径)
+            return JSONResponse({
+                "type": "text",            # 前端识别为文本类文件
+                "content": text_content,   # 解析出的文字内容
+                "fileName": file.filename, # 原文件名
+                "savedPath": saved_filename # 返回保存的文件名
+            })
 
+        # --------------------------------------------------------------------------
         # 2. 处理 Word
+        # --------------------------------------------------------------------------
         elif ext in ["doc", "docx"]:
-            doc = docx.Document(io.BytesIO(await file.read()))
-            content = "\n".join([para.text for para in doc.paragraphs])
+            saved_filename = f"doc_{uuid.uuid4().hex}.{ext}"
+            saved_path = os.path.join(FILES_DIR, saved_filename)
+            
+            file_data = await file.read()
+            with open(saved_path, "wb") as f:
+                f.write(file_data)
 
+            doc = docx.Document(saved_path)
+            text_content = "\n".join([para.text for para in doc.paragraphs])
+            
+            return JSONResponse({
+                "type": "text",
+                "content": text_content,
+                "fileName": file.filename,
+                "savedPath": saved_filename
+            })
+
+        # --------------------------------------------------------------------------
         # 3. 处理 Excel
+        # --------------------------------------------------------------------------
         elif ext in ["xls", "xlsx"]:
-            df = pd.read_excel(io.BytesIO(await file.read()))
-            content = df.to_csv(index=False) # 转为文本格式供LLM阅读
+            saved_filename = f"doc_{uuid.uuid4().hex}.{ext}"
+            saved_path = os.path.join(FILES_DIR, saved_filename)
+            
+            file_data = await file.read()
+            with open(saved_path, "wb") as f:
+                f.write(file_data)
 
-        # 4. 处理图片 (Base64 编码)
+            df = pd.read_excel(saved_path)
+            text_content = df.to_csv(index=False)
+            
+            return JSONResponse({
+                "type": "text",
+                "content": text_content,
+                "fileName": file.filename,
+                "savedPath": saved_filename
+            })
+        # --------------------------------------------------------------------------
+        # 4. 处理图片 (Base64 编码) - 保持原逻辑不变
+        # --------------------------------------------------------------------------
+        
         elif ext in ["jpg", "jpeg", "png"]:
             file_data = await file.read()
             base64_image = base64.b64encode(file_data).decode('utf-8')
@@ -508,12 +562,12 @@ async def upload_temp_file(file: UploadFile = File(...)):
             image_path = os.path.join(IMAGES_DIR, image_filename)
             with open(image_path, "wb") as f:
                 f.write(file_data)
-            
+        
             return JSONResponse({
                 "type": "image",
                 "content": base64_image,
                 "fileName": file.filename,
-                "savedPath": image_filename  # 新增: 返回保存的路径
+                "savedPath": image_filename 
             })
 
         return JSONResponse({

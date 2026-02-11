@@ -589,87 +589,100 @@ export default function TrainingAssistant({ onBack, userId }) {
                                     {/* max-w-[85%] 移到这里，控制整体宽度 */}
                                     {/* items-end 让用户的文件和气泡都靠右，items-start 让 AI 的都靠左 */}
                                     <div className={`flex flex-col gap-2 max-w-[85%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-
-                                        {/* 2.1 文件列表 (放在气泡上方) */}
+                                        {/* 2.1 文件列表 */}
                                         {msg.files && msg.files.length > 0 && (
                                             <div className={`flex flex-wrap gap-2 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                                                 {msg.files.map((file, fIndex) => {
-                                                    // 1. 宽松判断图片类型 (兼容 'image', 'image/png' 等)
+                                                    // 1. 宽松判断图片类型
                                                     const isImage = file.type && (file.type === 'image' || file.type.startsWith('image'));
 
-                                                    // 2. 智能获取图片地址
+                                                    // 2. 智能获取图片预览地址 (imgSrc)
                                                     let imgSrc = null;
                                                     if (isImage) {
                                                         if (file.content) {
-                                                            // 情况A: 后端返回的完整 Base64 (包含 data:image...)
-                                                            imgSrc = file.content;
+                                                            imgSrc = file.content; // Base64
                                                         } else if (file.base64) {
-                                                            // 情况B: 旧格式纯 Base64 码
                                                             imgSrc = `data:image/jpeg;base64,${file.base64}`;
                                                         } else if (file instanceof File) {
-                                                            // 情况C: 刚上传但在发送前的 File 对象
-                                                            imgSrc = URL.createObjectURL(file);
+                                                            imgSrc = URL.createObjectURL(file); // 本地预览
                                                         } else if (file.url) {
-                                                            // 情况D: 远程 URL
                                                             imgSrc = file.url;
                                                         }
                                                     }
 
-                                                    // 3. 渲染逻辑：如果是有效图片则显示预览图
+                                                    // 3. 智能获取文件下载地址 (downloadUrl)
+                                                    // 逻辑: 优先用 file.url (历史记录), 其次用 file.savedPath (刚发送成功), 最后是 null
+                                                    let downloadUrl = null;
+                                                    if (file.url) {
+                                                        // 如果是相对路径 (/files/...), 拼上 API_BASE_URL
+                                                        downloadUrl = file.url.startsWith('http') ? file.url : `${API_BASE_URL}${file.url}`;
+                                                    } else if (file.savedPath) {
+                                                        // 刚上传成功，后端返回了 savedPath (例如 "doc_xxx.pdf")
+                                                        // 假设后端挂载点是 /files/，手动拼接完整 URL
+                                                        downloadUrl = `${API_BASE_URL}/files/${file.savedPath}`;
+                                                    }
+
+                                                    // 4. 渲染逻辑
                                                     if (isImage && imgSrc) {
+                                                        // --- 图片渲染 ---
                                                         return (
                                                             <div
                                                                 key={fIndex}
                                                                 className="rounded-xl overflow-hidden border border-gray-200 shadow-sm hover:shadow-md transition-shadow bg-white relative group"
                                                                 style={{ maxWidth: '300px' }}
                                                             >
-                                                                {/* 图片预览 */}
                                                                 <img
                                                                     src={imgSrc}
                                                                     alt={file.name || 'image'}
                                                                     className="w-full h-auto bg-gray-100"
-                                                                    style={{
-                                                                        maxHeight: '300px',
-                                                                        objectFit: 'contain',
-                                                                        display: 'block'
-                                                                    }}
-                                                                    // 如果图片加载失败（比如 base64 损坏），隐藏这个元素，避免显示裂图图标
-                                                                    onError={(e) => {
-                                                                        e.target.style.display = 'none';
-                                                                        // 可以选择显示一个 fallback 的文本
-                                                                    }}
+                                                                    style={{ maxHeight: '300px', objectFit: 'contain', display: 'block' }}
+                                                                    onError={(e) => { e.target.style.display = 'none'; }}
                                                                 />
-                                                                {/* 图片底部的文件名 (半透明层，鼠标悬停更明显) */}
-                                                                <div className="px-3 py-2 bg-gray-50/90 border-t border-gray-100 backdrop-blur-sm">
-                                                                    <span className="text-xs text-gray-600 truncate block">
+                                                                {/* 图片底部文件名 */}
+                                                                <div className="px-3 py-2 bg-gray-50/90 border-t border-gray-100 backdrop-blur-sm flex justify-between items-center">
+                                                                    <span className="text-xs text-gray-600 truncate block max-w-[150px]">
                                                                         {file.name || "图片预览"}
                                                                     </span>
+                                                                    {/* 如果有下载链接，给图片也加个下载按钮 */}
+                                                                    {downloadUrl && (
+                                                                        <a href={downloadUrl} download={file.name} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-700">
+                                                                            <FileText size={14} />
+                                                                        </a>
+                                                                    )}
                                                                 </div>
                                                             </div>
                                                         );
                                                     } else {
-                                                        // 4. 非图片或无数据的图片，显示通用文件卡片
+                                                        // --- 普通文件渲染 (带下载功能) ---
                                                         return (
-                                                            <div
+                                                            <a
                                                                 key={fIndex}
-                                                                className="flex items-center gap-2 bg-white border border-gray-200 px-3 py-2 rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-default"
+                                                                href={downloadUrl || "#"}
+                                                                target={downloadUrl ? "_blank" : undefined}
+                                                                rel="noopener noreferrer"
+                                                                download={file.name} // 尝试触发浏览器下载
+                                                                className={`flex items-center gap-2 bg-white border border-gray-200 px-3 py-2 rounded-xl shadow-sm transition-all cursor-default ${downloadUrl ? "hover:shadow-md hover:border-blue-300 cursor-pointer group" : "opacity-80"
+                                                                    }`}
+                                                                onClick={(e) => {
+                                                                    if (!downloadUrl) e.preventDefault();
+                                                                }}
                                                             >
                                                                 {/* 图标 */}
-                                                                <div className="shrink-0 p-1 bg-gray-50 rounded-lg">
-                                                                    {/* 如果你有 getFileIcon 函数则保留，没有则用默认图标 */}
-                                                                    {typeof getFileIcon === 'function' ? getFileIcon(file.name, file.type) : <FileText size={20} className="text-gray-400" />}
+                                                                <div className={`shrink-0 p-1 rounded-lg ${downloadUrl ? "bg-blue-50 text-blue-500 group-hover:text-blue-600" : "bg-gray-50 text-gray-400"}`}>
+                                                                    <FileText size={20} />
                                                                 </div>
 
                                                                 {/* 文件名信息 */}
-                                                                <div className="flex flex-col min-w-0">
-                                                                    <span className="text-xs font-medium text-gray-700 truncate max-w-[180px]">
+                                                                <div className="flex flex-col min-w-0 text-left">
+                                                                    <span className={`text-xs font-medium truncate max-w-[180px] ${downloadUrl ? "text-blue-700 group-hover:text-blue-800" : "text-gray-700"}`}>
                                                                         {file.name || "未知文件"}
                                                                     </span>
                                                                     <span className="text-[10px] text-gray-400">
-                                                                        {file.type === 'file' ? '文件' : (file.type || '未知类型')}
+                                                                        {/* 状态显示: 如果有链接显示'点击下载'，否则显示'上传中/文件' */}
+                                                                        {file.type === 'file' ? (downloadUrl ? '点击下载' : '处理中...') : file.type}
                                                                     </span>
                                                                 </div>
-                                                            </div>
+                                                            </a>
                                                         );
                                                     }
                                                 })}

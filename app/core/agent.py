@@ -591,8 +591,10 @@ async def chat_stream(message: str, thread_id: str, temp_context: dict = None):
                 c_saved_path = ctx.get("savedPath")  # 获取保存路径
 
                 if c_type == "text":
-                    # 累积文本文件内容
-                    attached_texts.append(f"【参考文件:{c_name}】\n{c_content}")
+                    if c_saved_path:
+                        attached_texts.append(f"【参考文件:{c_name}|路径:{c_saved_path}】\n{c_content}")
+                    else:
+                        attached_texts.append(f"【参考文件:{c_name}】\n{c_content}")
                 
                 elif c_type == "image":
                     # 记录图片信息时包含保存路径

@@ -26,6 +26,7 @@ from app.core.agent import chat_stream, pool, get_graph
 # 配置密码哈希算法
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 IMAGES_DIR = "./factory_images"
+FILES_DIR = "./factory_files"
 # 初始化数据库
 async def init_database():
     """
@@ -276,22 +277,50 @@ def parse_files_fallback(content: str):
     files = []
     
     # 1. 提取带路径的新格式
-    matches_with_path = re.findall(r"【参考文件:(.*?)\|路径:(.*?)】", content)
+    # Pattern: 【参考文件:文件名|路径:保存路径】
+    new_pattern = r"【参考文件:(.*?)\|路径:(.*?)】"
+    matches_with_path = re.findall(new_pattern, content)
+    
     for original_name, saved_path in matches_with_path:
-        full_path = os.path.join(IMAGES_DIR, saved_path)
-        b64 = read_image_as_base64(full_path)
         
-        if b64:
-            files.append({"name": original_name, "type": "image/png", "content": b64})
+        # 判断类型
+        ext = saved_path.split('.')[-1].lower()
+        
+        # A. 如果是图片 -> 转 Base64
+        if ext in ['jpg', 'jpeg', 'png', 'gif', 'webp']:
+            full_path = os.path.join(IMAGES_DIR, saved_path)
+            b64 = read_image_as_base64(full_path)
+            if b64:
+                files.append({"name": original_name, "type": "image/png", "content": b64})
+            else:
+                files.append({"name": original_name, "type": "file"})
+                
+        # B. 如果是 PDF/文档 -> 生成下载链接
         else:
-            files.append({"name": original_name, "type": "file"})
+            full_path = os.path.join(FILES_DIR, saved_path)
+            # 检查文件是否存在
+            if os.path.exists(full_path):
+                files.append({
+                    "name": original_name,
+                    "type": "file",   
+                    # 必须与 main.py 的 app.mount 保持一致
+                    "url": f"/chatfiles/{saved_path}" 
+                })
+            else:
+                # 文件丢失，只显示名字
+                files.append({"name": original_name, "type": "file"})
 
-    # 2. 提取旧格式 (防止漏网之鱼)
-    old_matches = re.findall(r"【参考文件:(.*?)】", content)
+    # 2. 提取旧格式前，先剔除新格式字符串
+    # 原因：如果不剔除，old_matches 会把 "文件名|路径:xxx" 这一整段匹配为文件名
+    content_no_new_tags = re.sub(new_pattern, "", content)
+
+    # 3. 提取旧格式 (只在剔除了新格式的文本里找)
+    old_matches = re.findall(r"【参考文件:(.*?)】", content_no_new_tags)
     for name in old_matches:
+        # 简单去重
         if any(f['name'] == name for f in files): continue
-        files.append({"name": name, "type": "file"}) 
-
+        files.append({"name": name, "type": "file"})
+    
     return files
 
 async def get_history(thread_id: str):
