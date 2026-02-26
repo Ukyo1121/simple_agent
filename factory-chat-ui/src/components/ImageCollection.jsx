@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-    Upload, Type, Image as ImageIcon, Save, RefreshCw, ArrowLeft
+    Upload, Type, Image as ImageIcon, Save, RefreshCw, ArrowLeft, Trash2
 } from 'lucide-react';
 import { API_BASE_URL } from '../config';
 
@@ -41,6 +41,30 @@ const ImageCollection = ({ onBack }) => {
     const handleFileChange = (e) => {
         if (e.target.files && e.target.files.length > 0) {
             setSelectedFile(e.target.files[0]);
+        }
+    };
+
+    const handleDelete = async (id) => {
+        // 弹窗确认，防止误删
+        if (!window.confirm("确定要删除这张图片吗？删除后将无法恢复。")) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/collect/image/${id}`, {
+                method: 'DELETE',
+            });
+
+            if (response.ok) {
+                // 删除成功后，直接从当前列表中过滤掉被删的图片，无需重新请求整个列表
+                setCollectedImages(prev => prev.filter(img => img.id !== id));
+            } else {
+                const errorData = await response.json();
+                alert(`删除失败: ${errorData.detail}`);
+            }
+        } catch (error) {
+            console.error("Error deleting image:", error);
+            alert("删除过程中发生错误");
         }
     };
 
@@ -174,13 +198,21 @@ const ImageCollection = ({ onBack }) => {
                     </h2>
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                         {collectedImages.map((img) => (
-                            <div key={img.id} className="border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow bg-gray-50 flex flex-col">
+                            <div key={img.id} className="relative border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow bg-gray-50 flex flex-col group">
+                                {/* 删除按钮 */}
+                                <button
+                                    onClick={() => handleDelete(img.id)}
+                                    className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-md opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10 hover:bg-red-600 shadow-sm"
+                                    title="删除图片"
+                                >
+                                    <Trash2 size={16} />
+                                </button>
                                 {/* 图片缩略图区域 */}
                                 <div className="h-48 bg-gray-200 flex items-center justify-center overflow-hidden">
                                     <img
                                         src={`${API_BASE_URL}/${img.file_path}`}
                                         alt={img.filename}
-                                        className="w-full h-full object-cover"
+                                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" // 可选：鼠标悬停图片微微放大
                                         onError={(e) => { e.target.onerror = null; e.target.src = "https://via.placeholder.com/300x200?text=Image+Load+Error" }}
                                     />
                                 </div>

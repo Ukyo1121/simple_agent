@@ -639,3 +639,40 @@ async def list_collected_images():
     
     images = await image_repo.get_recent_images(limit=30)
     return JSONResponse(content={"images": images}, status_code=200)
+
+@app.delete("/collect/image/{image_id}")
+async def delete_collected_image(image_id: int):
+    """
+    删除采集的图片（包含数据库记录和物理文件）
+    """
+    if not image_repo:
+        raise HTTPException(status_code=503, detail="Image repository not initialized")
+
+    try:
+        # 1. 从数据库中删除记录，并获取文件的相对路径
+        # 注意：这里调用的是我们在 image_repo.py 中新增的 delete_image 方法
+        file_path = await image_repo.delete_image(image_id)
+        
+        if not file_path:
+            raise HTTPException(status_code=404, detail="Image not found or already deleted")
+
+        # 2. 删除服务器上的物理文件
+        # 从 file_path (例如 "collect_images/xxx.jpg") 中提取出文件名
+        from pathlib import Path
+        filename = Path(file_path).name 
+        physical_path = COLLECT_IMAGES_DIR / filename
+        
+        # 检查物理文件是否存在，存在则删除
+        if physical_path.exists():
+            physical_path.unlink() 
+            logger.info(f"Deleted physical image file: {physical_path}")
+        else:
+            logger.warning(f"Physical file not found for deletion: {physical_path}")
+
+        return JSONResponse(content={"message": "Image deleted successfully"}, status_code=200)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error during image deletion: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))

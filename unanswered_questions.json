@@ -4,5 +4,11 @@
     "query": "错误码666是什么意思",
     "reason": "知识库中未找到关于FANUC机器人错误码666的定义或处理方法",
     "status": "pending"
+  },
+  {
+    "timestamp": "2026-02-26 09:25:28",
+    "query": "Python脚本报 KeyError: 'status'",
+    "reason": "知识库中未找到与Python脚本KeyError: 'status'相关的故障处理内容。上传的文件为设备维修手册和视觉算法异常码清单，不涉及Python编程错误排查。",
+    "status": "pending"
   }
 ]

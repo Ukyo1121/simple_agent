@@ -64,3 +64,26 @@ class ImageRepository:
             # 这里选择不抛出异常，而是返回空列表，避免整个页面崩溃
             return []
         return results
+
+    async def delete_image(self, image_id: int) -> Optional[str]:
+        """
+        从数据库中删除图片记录，并返回其文件路径以便删除物理文件。
+        """
+        delete_query = """
+            DELETE FROM collected_images
+            WHERE id = %s
+            RETURNING file_path;
+        """
+        try:
+            async with self.pool.connection() as conn:
+                async with conn.cursor() as cur:
+                    await cur.execute(delete_query, (image_id,))
+                    row = await cur.fetchone()
+                    if row:
+                        file_path = row[0]
+                        logger.info(f"Image record deleted from DB with ID: {image_id}")
+                        return file_path
+        except Exception as e:
+            logger.error(f"Error deleting image record from DB: {e}")
+            raise e
+        return None
