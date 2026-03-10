@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import {
     Send, Plus, MessageSquare, User, Bot, Loader2, StopCircle,
-    Mic, ArrowLeft, GraduationCap, Trash2, Menu, Paperclip, X, LayoutDashboard, Package, Play, Video
+    Mic, ArrowLeft, ScanLine, Trash2, Menu, Paperclip, X, LayoutDashboard, Package, Play, Video
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { API_BASE_URL } from "./config";
@@ -14,71 +14,50 @@ function ChatMiniVideoCard({ video, onPlay }) {
     return (
         <div
             onClick={onPlay}
-            className="mt-3 w-64 bg-white/90 backdrop-blur-sm border border-slate-200/60 rounded-2xl overflow-hidden shadow-md hover:shadow-xl hover:-translate-y-1 hover:border-violet-300 transition-all duration-300 cursor-pointer group"
+            className="mt-3 w-64 bg-white border border-blue-100 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all cursor-pointer group"
         >
             <div className="relative aspect-video bg-slate-100 overflow-hidden">
                 {video.thumbnail ? (
-                    <img src={video.thumbnail} alt={video.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                    <img src={video.thumbnail} alt={video.title} className="w-full h-full object-cover" />
                 ) : (
-                    <div className="flex items-center justify-center w-full h-full bg-gradient-to-br from-slate-100 to-slate-200">
-                        <Video className="text-slate-300" size={32} />
+                    <div className="flex items-center justify-center w-full h-full bg-gradient-to-br from-indigo-50 to-violet-100">
+                        <Video className="text-indigo-300" size={32} />
                     </div>
                 )}
-                {/* 悬停播放遮罩 */}
-                <div className="absolute inset-0 bg-slate-900/10 group-hover:bg-slate-900/40 transition-colors duration-300 flex items-center justify-center">
-                    <div className="w-14 h-14 bg-white/95 backdrop-blur-md rounded-full flex items-center justify-center text-violet-600 shadow-xl opacity-90 group-hover:scale-110 group-hover:opacity-100 transition-all duration-300">
-                        <Play size={26} className="ml-1" fill="currentColor" />
+                <div className="absolute inset-0 bg-black/10 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+                    <div className="w-12 h-12 bg-white/90 rounded-full flex items-center justify-center text-indigo-600 shadow-lg">
+                        <Play size={22} className="ml-0.5" fill="currentColor" />
                     </div>
                 </div>
             </div>
-            <div className="p-4 bg-gradient-to-b from-white to-slate-50">
-                <p className="text-sm font-bold text-slate-800 truncate">{video.title}</p>
-                <p className="text-xs text-violet-600 font-medium mt-1.5 flex items-center gap-1.5 opacity-80 group-hover:opacity-100 transition-opacity">
-                    <div className="w-5 h-5 rounded-full bg-violet-100 flex items-center justify-center">
-                        <Play size={10} fill="currentColor" />
-                    </div>
-                    点击播放演示
+            <div className="p-3">
+                <p className="text-sm font-semibold text-slate-800 truncate">{video.title}</p>
+                <p className="text-xs text-indigo-500 mt-1 flex items-center gap-1">
+                    <Play size={10} fill="currentColor" /> 点击播放演示
                 </p>
             </div>
         </div>
     );
 }
 
-// 🎬 视频播放模态框组件
 const VideoPlayerModal = ({ video, onClose }) => {
     if (!video) return null;
-
     return (
         <div
-            className="fixed inset-0 z-[999] flex items-center justify-center bg-slate-900/80 backdrop-blur-md p-4 transition-opacity"
+            className="fixed inset-0 z-[999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 transition-opacity"
             onClick={onClose}
         >
             <div
-                className="relative w-full max-w-4xl bg-black rounded-2xl shadow-2xl ring-1 ring-white/10 overflow-hidden animate-in fade-in zoom-in-95 duration-300"
+                className="relative w-full max-w-4xl bg-black rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200"
                 onClick={(e) => e.stopPropagation()}
             >
-                {/* 顶部悬浮栏：标题 + 关闭按钮 */}
-                <div className="absolute top-0 left-0 right-0 z-10 flex justify-between items-center p-4 bg-gradient-to-b from-black/90 via-black/50 to-transparent">
-                    <h3 className="text-white font-medium text-sm md:text-base truncate pr-8 tracking-wide">
-                        {video.title || '视频演示'}
-                    </h3>
-                    <button
-                        onClick={onClose}
-                        className="text-white/70 hover:text-white bg-white/10 hover:bg-white/20 backdrop-blur-sm rounded-full p-2 transition-all hover:rotate-90"
-                        title="关闭"
-                    >
+                <div className="absolute top-0 left-0 right-0 z-10 flex justify-between items-center p-4 bg-gradient-to-b from-black/80 to-transparent">
+                    <h3 className="text-white font-medium text-sm truncate pr-8">{video.title || '视频演示'}</h3>
+                    <button onClick={onClose} className="text-white/70 hover:text-white bg-white/10 rounded-full p-2 transition-all hover:rotate-90">
                         <X size={18} />
                     </button>
                 </div>
-
-                {/* 核心视频播放器 */}
-                <video
-                    src={video.url}
-                    controls
-                    autoPlay
-                    className="w-full h-auto max-h-[85vh] outline-none"
-                    poster={video.thumbnail}
-                >
+                <video src={video.url} controls autoPlay className="w-full h-auto max-h-[85vh] outline-none" poster={video.thumbnail}>
                     您的浏览器不支持 HTML5 视频播放。
                 </video>
             </div>
@@ -102,50 +81,37 @@ export default function TrainingAssistant({ onBack, userId }) {
     const abortControllerRef = useRef(null);
     const [attachedFiles, setAttachedFiles] = useState([]);
     const [playingVideo, setPlayingVideo] = useState(null);
+    const [showOperationCards, setShowOperationCards] = useState(false);
+    const [showProductCards, setShowProductCards] = useState(false);
 
     const renderMessageContent = (text, role) => {
         if (!text) return null;
-
         const parts = text.split(/(<video_preview>[\s\S]*?<\/video_preview>)/g);
-
         return parts.map((part, index) => {
             if (part.trim().startsWith('<video_preview>')) {
                 const jsonStr = part.replace('<video_preview>', '').replace('</video_preview>', '');
                 try {
                     const videoObj = JSON.parse(jsonStr);
-
-                    if (videoObj.url && videoObj.url.startsWith('/')) {
-                        videoObj.url = `${API_BASE_URL}${videoObj.url}`;
-                    }
-                    if (videoObj.thumbnail && videoObj.thumbnail.startsWith('/')) {
-                        videoObj.thumbnail = `${API_BASE_URL}${videoObj.thumbnail}`;
-                    }
-
+                    if (videoObj.url && videoObj.url.startsWith('/')) videoObj.url = `${API_BASE_URL}${videoObj.url}`;
+                    if (videoObj.thumbnail && videoObj.thumbnail.startsWith('/')) videoObj.thumbnail = `${API_BASE_URL}${videoObj.thumbnail}`;
                     return (
                         <div key={`video-${index}`} className="my-5">
-                            <ChatMiniVideoCard
-                                video={videoObj}
-                                onPlay={() => setPlayingVideo(videoObj)}
-                            />
+                            <ChatMiniVideoCard video={videoObj} onPlay={() => setPlayingVideo(videoObj)} />
                         </div>
                     );
                 } catch (e) {
                     console.error("解析视频数据失败:", e);
-                    return <div key={`err-${index}`} className="text-red-500 text-xs border border-red-200 p-2 rounded">视频解析失败: {jsonStr}</div>;
+                    return <div key={`err-${index}`} className="text-red-400 text-xs border border-red-900/30 bg-red-900/10 p-2 rounded-lg">视频解析失败: {jsonStr}</div>;
                 }
             }
-
             if (part.includes('<video_preview>') && !part.includes('</video_preview>')) {
                 return (
-                    <span key={`loading-${index}`} className="inline-flex items-center text-violet-500 text-xs animate-pulse ml-2 bg-violet-50 px-3 py-1.5 rounded-full border border-violet-100">
-                        <Loader2 size={14} className="animate-spin mr-1.5" />
-                        正在生成视频组件...
+                    <span key={`loading-${index}`} className="inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-full text-violet-400 bg-violet-900/20 border border-violet-700/30">
+                        <Loader2 size={12} className="animate-spin" /> 正在生成视频组件...
                     </span>
                 );
             }
-
             if (!part) return null;
-
             return (
                 <ReactMarkdown
                     key={`md-${index}`}
@@ -155,34 +121,30 @@ export default function TrainingAssistant({ onBack, userId }) {
                             let imgSrc = props.src;
                             if (imgSrc) {
                                 imgSrc = imgSrc.replace(/http:\/\/localhost:\d+/g, API_BASE_URL);
-                                if (imgSrc.startsWith('/images')) {
-                                    imgSrc = `${API_BASE_URL}${imgSrc}`;
-                                }
+                                if (imgSrc.startsWith('/images')) imgSrc = `${API_BASE_URL}${imgSrc}`;
                             }
-                            return <img {...props} src={imgSrc} className="max-w-full h-auto rounded-xl shadow-md my-4 border border-slate-200 cursor-zoom-in hover:shadow-lg transition-shadow" onClick={() => window.open(imgSrc, '_blank')} />
+                            return <img {...props} src={imgSrc} className="max-w-full h-auto rounded-xl my-3 cursor-zoom-in border border-indigo-900/20 shadow-md" onClick={() => window.open(imgSrc, '_blank')} />;
                         },
                         code({ node, className, children, ...props }) {
                             const match = /language-(\w+)/.exec(className || '');
                             return match ? (
-                                <div className="bg-slate-900 text-slate-50 p-3 rounded-xl my-3 overflow-x-auto shadow-inner border border-slate-700/50">
-                                    <code className={className} {...props}>{children}</code>
+                                <div className="bg-gray-950 border border-indigo-900/30 rounded-xl p-3 my-3 overflow-x-auto">
+                                    <code className={className} {...props} style={{ color: '#c4b5fd', fontFamily: 'monospace', fontSize: 13 }}>{children}</code>
                                 </div>
                             ) : (
-                                <code className={`${role === 'user' ? 'bg-white/20 text-white' : 'bg-violet-50 text-violet-600'} px-1.5 py-0.5 rounded-md font-mono text-[0.9em]`} {...props}>
-                                    {children}
-                                </code>
+                                <code {...props} style={{ background: role === 'user' ? 'rgba(255,255,255,0.15)' : 'rgba(99,102,241,0.15)', color: role === 'user' ? '#e0e7ff' : '#a78bfa', padding: '2px 6px', borderRadius: 5, fontFamily: 'monospace', fontSize: '0.88em' }}>{children}</code>
                             );
                         },
-                        table: ({ node, ...props }) => <div className="overflow-x-auto my-3 rounded-xl border border-slate-200 shadow-sm"><table className="min-w-full divide-y divide-slate-200 text-sm" {...props} /></div>,
-                        thead: ({ node, ...props }) => <thead className="bg-slate-50/80 backdrop-blur" {...props} />,
-                        tbody: ({ node, ...props }) => <tbody className="bg-white divide-y divide-slate-100" {...props} />,
-                        tr: ({ node, ...props }) => <tr className="hover:bg-slate-50 transition-colors" {...props} />,
-                        th: ({ node, ...props }) => <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider" {...props} />,
-                        td: ({ node, ...props }) => <td className="px-4 py-3 whitespace-nowrap text-slate-700" {...props} />,
-                        p: ({ node, ...props }) => <p className="mb-3 last:mb-0 leading-relaxed" {...props} />,
-                        a: ({ node, ...props }) => <a className="text-violet-600 font-medium hover:text-violet-700 hover:underline decoration-violet-300 underline-offset-4 transition-all" target="_blank" {...props} />,
-                        ul: ({ node, ...props }) => <ul className="list-disc list-outside ml-5 mb-3 space-y-1" {...props} />,
-                        ol: ({ node, ...props }) => <ol className="list-decimal list-outside ml-5 mb-3 space-y-1" {...props} />,
+                        table: ({ node, ...props }) => <div className="overflow-x-auto my-3 rounded-xl border border-indigo-900/25"><table className="min-w-full text-sm" style={{ borderCollapse: 'collapse' }} {...props} /></div>,
+                        thead: ({ node, ...props }) => <thead style={{ background: 'rgba(99,102,241,0.12)' }} {...props} />,
+                        tbody: ({ node, ...props }) => <tbody {...props} />,
+                        tr: ({ node, ...props }) => <tr style={{ borderBottom: '1px solid rgba(99,102,241,0.1)' }} {...props} />,
+                        th: ({ node, ...props }) => <th style={{ padding: '9px 13px', textAlign: 'left', color: '#a78bfa', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: 1 }} {...props} />,
+                        td: ({ node, ...props }) => <td style={{ padding: '9px 13px', color: 'rgba(210,215,255,0.8)' }} {...props} />,
+                        p: ({ node, ...props }) => <p className="mb-2.5 last:mb-0 leading-relaxed" {...props} />,
+                        a: ({ node, ...props }) => <a className="text-indigo-400 hover:text-indigo-300 underline underline-offset-2" target="_blank" {...props} />,
+                        ul: ({ node, ...props }) => <ul className="list-disc list-outside ml-5 mb-2.5 space-y-1" {...props} />,
+                        ol: ({ node, ...props }) => <ol className="list-decimal list-outside ml-5 mb-2.5 space-y-1" {...props} />,
                         li: ({ node, ...props }) => <li className="pl-1" {...props} />,
                     }}
                 >
@@ -199,11 +161,8 @@ export default function TrainingAssistant({ onBack, userId }) {
             if (res.ok) {
                 const data = await res.json();
                 setThreads(data);
-
                 if (data.length > 0) {
-                    if (!activeThreadId) {
-                        switchThread(data[0].id);
-                    }
+                    if (!activeThreadId) switchThread(data[0].id);
                 } else {
                     createNewThread();
                 }
@@ -214,9 +173,7 @@ export default function TrainingAssistant({ onBack, userId }) {
     };
 
     useEffect(() => {
-        if (userId) {
-            fetchUserThreads();
-        }
+        if (userId) fetchUserThreads();
     }, [userId]);
 
     useEffect(() => {
@@ -249,14 +206,10 @@ export default function TrainingAssistant({ onBack, userId }) {
         setMessages([]);
         setStreamBuffer("");
         setDisplayedContent("");
-
         try {
             const res = await fetch(`${API_BASE_URL}/history/${threadId}`);
             const data = await res.json();
-
-            if (data.history && Array.isArray(data.history)) {
-                setMessages(data.history);
-            }
+            if (data.history && Array.isArray(data.history)) setMessages(data.history);
         } catch (err) {
             console.error("加载历史记录失败", err);
         } finally {
@@ -267,32 +220,19 @@ export default function TrainingAssistant({ onBack, userId }) {
     const createNewThread = async () => {
         if (isLoading) return;
         setIsLoading(true);
-
         try {
             const res = await fetch(`${API_BASE_URL}/threads`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ user_id: userId, thread_type: 'training' })
             });
-
-            if (!res.ok) {
-                throw new Error("创建会话失败");
-            }
-
+            if (!res.ok) throw new Error("创建会话失败");
             const newThreadData = await res.json();
-
-            const newThread = {
-                id: newThreadData.id,
-                title: newThreadData.title || "新会话",
-                history: []
-            };
-
+            const newThread = { id: newThreadData.id, title: newThreadData.title || "新会话", history: [] };
             setThreads(prev => [newThread, ...prev]);
-
             setActiveThreadId(newThread.id);
             setMessages([]);
             resetTyper();
-
         } catch (error) {
             console.error("新建会话失败:", error);
             alert("无法创建新会话，请检查网络或后端服务");
@@ -303,11 +243,8 @@ export default function TrainingAssistant({ onBack, userId }) {
 
     const switchThread = (id) => {
         if (isLoading && activeThreadId === id) return;
-
         setActiveThreadId(id);
-
         const targetThread = threads.find(t => t.id === id);
-
         if (targetThread && targetThread.title === "新会话" && (!targetThread.history || targetThread.history.length === 0)) {
             setMessages([]);
             setStreamBuffer("");
@@ -325,20 +262,12 @@ export default function TrainingAssistant({ onBack, userId }) {
 
     const handleDeleteThread = async (e, threadId) => {
         e.stopPropagation();
-
-        if (!window.confirm("确定要删除这条历史记录吗？删除后无法恢复。")) {
-            return;
-        }
-
+        if (!window.confirm("确定要删除这条历史记录吗？删除后无法恢复。")) return;
         try {
-            const res = await fetch(`${API_BASE_URL}/threads/${threadId}?user_id=${userId}`, {
-                method: 'DELETE',
-            });
-
+            const res = await fetch(`${API_BASE_URL}/threads/${threadId}?user_id=${userId}`, { method: 'DELETE' });
             if (res.ok) {
                 const newThreads = threads.filter(t => t.id !== threadId);
                 setThreads(newThreads);
-
                 if (activeThreadId === threadId) {
                     if (newThreads.length > 0) {
                         setActiveThreadId(newThreads[0].id);
@@ -359,50 +288,27 @@ export default function TrainingAssistant({ onBack, userId }) {
     const handleSend = async (manualInput = null) => {
         const textToSend = manualInput || input;
         if (!textToSend.trim() || isLoading) return;
-
         const currentFiles = [...attachedFiles];
-
         const finalTempContext = currentFiles.length > 0
-            ? currentFiles.map(f => ({
-                type: f.type,
-                content: f.content,
-                fileName: f.fileName || f.name,
-                savedPath: f.savedPath
-            }))
+            ? currentFiles.map(f => ({ type: f.type, content: f.content, fileName: f.fileName || f.name, savedPath: f.savedPath }))
             : null;
-
         const userMessage = {
             role: "user",
             content: textToSend,
-            files: currentFiles.map(f => ({
-                name: f.fileName || f.name,
-                type: f.type,
-                base64: f.type === "image" ? f.content : undefined,
-                savedPath: f.savedPath
-            }))
+            files: currentFiles.map(f => ({ name: f.fileName || f.name, type: f.type, base64: f.type === "image" ? f.content : undefined, savedPath: f.savedPath }))
         };
         setMessages(prev => [...prev, userMessage]);
         setInput("");
         setIsLoading(true);
         setAttachedFiles([]);
         resetTyper();
-
         setMessages(prev => [...prev, { role: 'ai', content: "" }]);
         abortControllerRef.current = new AbortController();
-
         try {
             const currentThread = threads.find(t => t.id === activeThreadId);
-
             if (currentThread && (currentThread.title === "新会话" || currentThread.title === "New Thread")) {
-
-                const newTitle = textToSend.length > 15
-                    ? textToSend.substring(0, 15) + "..."
-                    : textToSend;
-
-                setThreads(prev => prev.map(t =>
-                    t.id === activeThreadId ? { ...t, title: newTitle } : t
-                ));
-
+                const newTitle = textToSend.length > 15 ? textToSend.substring(0, 15) + "..." : textToSend;
+                setThreads(prev => prev.map(t => t.id === activeThreadId ? { ...t, title: newTitle } : t));
                 fetch(`${API_BASE_URL}/threads/${activeThreadId}/title`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
@@ -412,31 +318,22 @@ export default function TrainingAssistant({ onBack, userId }) {
         } catch (err) {
             console.error("标题逻辑出错,已跳过:", err);
         }
-
         try {
             const response = await fetch(API_URL, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    query: textToSend,
-                    thread_id: activeThreadId,
-                    user_id: userId,
-                    temp_context: finalTempContext
-                }),
+                body: JSON.stringify({ query: textToSend, thread_id: activeThreadId, user_id: userId, temp_context: finalTempContext }),
                 signal: abortControllerRef.current.signal
             });
-
             if (!response.ok) throw new Error("API Error");
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
-
             while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
                 const chunk = decoder.decode(value, { stream: true });
                 setStreamBuffer(prev => prev + chunk);
             }
-
         } catch (error) {
             if (error.name !== 'AbortError') {
                 setStreamBuffer(prev => prev + "\n\n⚠️ 连接服务器失败,请检查后端。");
@@ -455,52 +352,81 @@ export default function TrainingAssistant({ onBack, userId }) {
     };
 
     return (
-        <div className="flex h-screen bg-[#f4f7f9] text-slate-800 font-sans animate-fade-in relative overflow-hidden">
-            {/* 展览级环境背景装饰 (玻璃拟态的光斑) */}
-            <div className="absolute top-[-15%] left-[-10%] w-[50vw] h-[50vw] rounded-full bg-blue-500/10 blur-[120px] pointer-events-none" />
-            <div className="absolute bottom-[-20%] right-[-10%] w-[60vw] h-[60vw] rounded-full bg-violet-500/10 blur-[140px] pointer-events-none" />
+        <div className="flex h-screen font-sans" style={{ background: 'linear-gradient(135deg, #eef2ff 0%, #fafbff 50%, #f5f0ff 100%)', color: '#1e1b4b' }}>
 
-            {/* 1. 侧边栏 */}
-            <div className={`transition-all duration-400 ease-in-out bg-slate-900 text-white flex flex-col flex-shrink-0 shadow-2xl z-30 overflow-hidden ${isSidebarOpen ? 'w-1/4' : 'w-0'}`}>
-                <div className="w-[25vw] flex flex-col h-full bg-gradient-to-b from-slate-900 to-slate-800">
-                    {/* 顶部标题区域 */}
-                    <div className="p-5 border-b border-slate-700/50 flex items-center justify-between backdrop-blur-sm">
-                        <h1 className="font-bold text-lg flex items-center gap-2 tracking-wide">
-                            <MessageSquare className="text-violet-400" size={20} />
-                            历史会话
-                        </h1>
+            {/* 背景装饰 */}
+            <div className="pointer-events-none fixed inset-0 overflow-hidden">
+                <div style={{ position: 'absolute', top: '-8%', left: '-8%', width: '40vw', height: '40vw', borderRadius: '50%', background: 'radial-gradient(circle, rgba(99,102,241,0.15) 0%, transparent 65%)', filter: 'blur(50px)' }} />
+                <div style={{ position: 'absolute', bottom: '-10%', right: '-8%', width: '45vw', height: '45vw', borderRadius: '50%', background: 'radial-gradient(circle, rgba(14,165,233,0.12) 0%, transparent 65%)', filter: 'blur(50px)' }} />
+                <div style={{ position: 'absolute', top: '40%', left: '35%', width: '30vw', height: '30vw', borderRadius: '50%', background: 'radial-gradient(circle, rgba(168,85,247,0.08) 0%, transparent 65%)', filter: 'blur(60px)' }} />
+                <div style={{ position: 'absolute', inset: 0, backgroundImage: 'linear-gradient(rgba(99,102,241,0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(99,102,241,0.035) 1px, transparent 1px)', backgroundSize: '44px 44px' }} />
+            </div>
+
+            {/* ===== 侧边栏 ===== */}
+            <div
+                className="flex-shrink-0 flex flex-col z-30 overflow-hidden transition-all duration-300 ease-in-out"
+                style={{
+                    width: isSidebarOpen ? '260px' : '0px',
+                    background: 'rgba(255,255,255,0.92)',
+                    borderRight: '1px solid rgba(99,102,241,0.15)',
+                    backdropFilter: 'blur(20px)',
+                    boxShadow: isSidebarOpen ? '4px 0 24px rgba(99,102,241,0.08)' : 'none',
+                }}
+            >
+                <div style={{ width: 260, height: '100%', display: 'flex', flexDirection: 'column' }}>
+                    {/* 侧边栏标题 */}
+                    <div className="flex items-center gap-2.5 px-5 py-4" style={{ borderBottom: '1px solid rgba(99,102,241,0.1)', background: 'linear-gradient(135deg, rgba(99,102,241,0.06), rgba(14,165,233,0.04))' }}>
+                        <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'linear-gradient(135deg, #6366f1, #0ea5e9)', boxShadow: '0 0 8px rgba(99,102,241,0.5)', flexShrink: 0 }} />
+                        <span className="font-bold text-sm tracking-widest" style={{ color: '#4338ca', letterSpacing: '0.1em' }}>历史会话</span>
                     </div>
 
-                    <div className="p-4">
+                    {/* 新建会话按钮 */}
+                    <div className="px-4 py-3">
                         <button
                             onClick={() => createNewThread("新会话")}
                             disabled={isLoading}
-                            className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-500 hover:to-violet-500 p-3 rounded-xl text-sm font-medium transition-all shadow-lg shadow-violet-500/20 group border border-white/5"
+                            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200"
+                            style={{
+                                background: 'linear-gradient(135deg, #6366f1, #0ea5e9)',
+                                border: 'none',
+                                color: 'white',
+                                boxShadow: '0 4px 14px rgba(99,102,241,0.3)',
+                            }}
+                            onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 6px 20px rgba(99,102,241,0.4)'; }}
+                            onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 4px 14px rgba(99,102,241,0.3)'; }}
                         >
-                            <Plus size={18} className="group-hover:rotate-90 transition-transform duration-300" /> 新建会话
+                            <Plus size={15} /> 新建会话
                         </button>
                     </div>
 
-                    <div className="flex-1 overflow-y-auto px-3 custom-scrollbar">
+                    {/* 会话列表 */}
+                    <div className="flex-1 overflow-y-auto px-3 pb-4 custom-scrollbar">
                         {threads.map(thread => (
                             <button
                                 key={thread.id}
                                 onClick={() => switchThread(thread.id)}
                                 disabled={isLoading}
-                                className={`group w-full text-left p-3.5 rounded-xl mb-2 text-sm flex items-center gap-3 transition-all duration-200 border ${activeThreadId === thread.id
-                                    ? 'bg-white/10 text-white border-violet-400/50 shadow-inner'
-                                    : 'text-slate-400 border-transparent hover:bg-white/5 hover:text-slate-200'
-                                    }`}
+                                className="group w-full text-left flex items-center gap-2.5 px-3 py-2.5 rounded-xl mb-1 text-sm transition-all duration-200"
+                                style={{
+                                    background: activeThreadId === thread.id ? 'linear-gradient(135deg, rgba(99,102,241,0.1), rgba(14,165,233,0.08))' : 'transparent',
+                                    border: `1px solid ${activeThreadId === thread.id ? 'rgba(99,102,241,0.25)' : 'transparent'}`,
+                                    color: activeThreadId === thread.id ? '#4338ca' : '#64748b',
+                                }}
+                                onMouseEnter={e => { if (activeThreadId !== thread.id) { e.currentTarget.style.background = 'rgba(99,102,241,0.05)'; e.currentTarget.style.color = '#4f46e5'; } }}
+                                onMouseLeave={e => { if (activeThreadId !== thread.id) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#64748b'; } }}
                             >
-                                <MessageSquare size={16} className={`flex-shrink-0 ${activeThreadId === thread.id ? 'text-violet-400' : 'text-slate-500 group-hover:text-slate-400'}`} />
-                                <span className="truncate flex-1 font-medium">{thread.title}</span>
+                                <MessageSquare size={13} style={{ flexShrink: 0, color: activeThreadId === thread.id ? '#6366f1' : '#94a3b8' }} />
+                                <span className="flex-1 truncate font-medium" style={{ fontSize: 13 }}>{thread.title}</span>
                                 <div
                                     role="button"
                                     onClick={(e) => handleDeleteThread(e, thread.id)}
-                                    className={`p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-all opacity-0 group-hover:opacity-100 flex-shrink-0 ${activeThreadId === thread.id ? 'opacity-100' : ''}`}
+                                    className="p-1 rounded-lg opacity-0 group-hover:opacity-100 transition-all flex-shrink-0"
+                                    style={{ color: '#f87171' }}
+                                    onMouseEnter={e => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = 'rgba(239,68,68,0.08)'; }}
+                                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
                                     title="删除会话"
                                 >
-                                    <Trash2 size={16} />
+                                    <Trash2 size={13} />
                                 </div>
                             </button>
                         ))}
@@ -508,109 +434,287 @@ export default function TrainingAssistant({ onBack, userId }) {
                 </div>
             </div>
 
-            {/* 2. 主界面 */}
-            <div className="flex-1 flex flex-col relative min-w-0 z-10 bg-transparent">
+            {/* ===== 主界面 — 与原始代码保持相同的 relative 布局结构 ===== */}
+            <div className="flex-1 flex flex-col relative min-w-0">
 
-                {/* 顶部导航栏 (固定高度，不参与缩放) */}
-                <div className="shrink-0 h-16 border-b border-white/40 flex items-center px-4 shadow-[0_2px_10px_rgba(0,0,0,0.02)] z-20 bg-white/70 backdrop-blur-xl justify-between">
+                {/* 顶部导航栏 */}
+                <div
+                    className="flex-shrink-0 h-14 flex items-center justify-between px-4 z-20"
+                    style={{
+                        background: 'rgba(255,255,255,0.85)',
+                        borderBottom: '1px solid rgba(99,102,241,0.12)',
+                        backdropFilter: 'blur(16px)',
+                        boxShadow: '0 1px 12px rgba(99,102,241,0.07)',
+                    }}
+                >
                     <div className="flex items-center gap-2">
-                        <button onClick={onBack} className="p-2 text-slate-500 hover:bg-white hover:shadow-sm hover:text-violet-600 rounded-xl transition-all" title="返回">
-                            <ArrowLeft size={20} />
+                        <button
+                            onClick={onBack}
+                            className="flex items-center justify-center w-8 h-8 rounded-lg transition-all duration-200"
+                            style={{ border: '1px solid rgba(99,102,241,0.2)', color: '#6366f1', background: 'rgba(99,102,241,0.05)' }}
+                            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(99,102,241,0.12)'; e.currentTarget.style.borderColor = 'rgba(99,102,241,0.4)'; }}
+                            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(99,102,241,0.05)'; e.currentTarget.style.borderColor = 'rgba(99,102,241,0.2)'; }}
+                            title="返回"
+                        >
+                            <ArrowLeft size={17} />
                         </button>
-
                         <button
                             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                            className={`p-2 rounded-xl transition-all ${isSidebarOpen ? 'bg-violet-100 text-violet-700' : 'text-slate-500 hover:bg-white hover:shadow-sm hover:text-violet-600'}`}
+                            className="flex items-center justify-center w-8 h-8 rounded-lg transition-all duration-200"
+                            style={{
+                                border: `1px solid ${isSidebarOpen ? 'rgba(99,102,241,0.4)' : 'rgba(99,102,241,0.2)'}`,
+                                background: isSidebarOpen ? 'rgba(99,102,241,0.12)' : 'rgba(99,102,241,0.05)',
+                                color: '#6366f1',
+                            }}
+                            onMouseEnter={e => { if (!isSidebarOpen) { e.currentTarget.style.background = 'rgba(99,102,241,0.1)'; } }}
+                            onMouseLeave={e => { if (!isSidebarOpen) { e.currentTarget.style.background = 'rgba(99,102,241,0.05)'; } }}
                             title={isSidebarOpen ? "收起历史记录" : "展开历史记录"}
                         >
-                            <Menu size={20} />
+                            <Menu size={17} />
                         </button>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center shadow-md">
-                            <GraduationCap className="text-white" size={18} />
+                    {/* 标题 */}
+                    <div className="flex items-center gap-2.5">
+                        <div
+                            className="w-8 h-8 rounded-lg flex items-center justify-center"
+                            style={{ background: 'linear-gradient(135deg, #6366f1, #0ea5e9)', boxShadow: '0 4px 14px rgba(99,102,241,0.35)' }}
+                        >
+                            <ScanLine size={17} color="white" />
                         </div>
-                        <h1 className="font-bold text-lg tracking-wide bg-clip-text text-transparent bg-gradient-to-r from-slate-800 to-slate-600 ml-1">
+                        <span
+                            className="font-extrabold text-sm tracking-widest"
+                            style={{ background: 'linear-gradient(135deg, #4f46e5, #0ea5e9)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}
+                        >
                             智能分拣助手
-                        </h1>
+                        </span>
+                        <div className="flex gap-1 ml-1">
+                            {[0, 1, 2].map(i => (
+                                <div key={i} style={{ width: 4, height: 4, borderRadius: '50%', background: 'linear-gradient(135deg, #6366f1, #0ea5e9)', animation: `navDot 1.8s ease-in-out ${i * 0.3}s infinite` }} />
+                            ))}
+                        </div>
                     </div>
+
+                    <div style={{ width: 72 }} />
                 </div>
 
-                {/* 聊天区域  */}
-                <div className="flex-1 overflow-y-auto p-4 custom-scrollbar scroll-smooth">
-                    <div className="max-w-3xl mx-auto space-y-6 min-h-full flex flex-col pb-4">
-                        {messages.length === 0 && (
-                            <div className="flex-1 flex flex-col items-center justify-center text-center mt-6 animate-in fade-in slide-in-from-bottom-8 duration-700">
-                                <div className="relative group mb-8">
-                                    <div className="absolute inset-0 bg-violet-400 rounded-[2.5rem] blur-xl opacity-40 group-hover:opacity-60 transition-opacity duration-500"></div>
-                                    <div className="relative w-24 h-24 bg-gradient-to-tr from-blue-600 via-indigo-500 to-violet-500 rounded-[2.5rem] shadow-2xl flex items-center justify-center transform group-hover:scale-105 group-hover:rotate-3 transition-all duration-500">
-                                        <Bot size={48} className="text-white drop-shadow-md" />
-                                    </div>
-                                </div>
-                                <h2 className="text-3xl font-extrabold text-slate-800 mb-4 tracking-tight">开启智能操作指引</h2>
-                                <p className="text-slate-500 mb-12 max-w-md text-base leading-relaxed">
-                                    点击下方模块，快速了解智能分拣平台的核心功能与操作流程。
-                                </p>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-5 w-full max-w-2xl px-4">
-                                    <button
-                                        onClick={() => handleSend("教我使用智能分拣平台的操作界面")}
-                                        className="flex items-center gap-4 p-5 bg-white/80 backdrop-blur-md border border-white/60 rounded-2xl hover:border-blue-300 hover:shadow-xl hover:shadow-blue-500/10 hover:-translate-y-1 transition-all duration-300 text-left group"
-                                    >
-                                        <div className="w-12 h-12 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300 border border-blue-100/50">
-                                            <LayoutDashboard size={24} className="text-blue-600" />
-                                        </div>
-                                        <div>
-                                            <div className="font-bold text-slate-700 text-lg group-hover:text-blue-700 transition-colors">操作指导</div>
-                                            <div className="text-sm text-slate-400 mt-0.5">例如：系统主界面操作</div>
-                                        </div>
-                                    </button>
+                {/* 聊天滚动区 — 与原始代码完全一致：pb-32 为绝对定位输入框留空间 */}
+                <div className="flex-1 overflow-y-auto p-4 pb-32 custom-scrollbar">
+                    <div className="max-w-3xl mx-auto space-y-5 min-h-full flex flex-col">
 
-                                    <button
-                                        onClick={() => handleSend("介绍一下公司的主要产品")}
-                                        className="flex items-center gap-4 p-5 bg-white/80 backdrop-blur-md border border-white/60 rounded-2xl hover:border-violet-300 hover:shadow-xl hover:shadow-violet-500/10 hover:-translate-y-1 transition-all duration-300 text-left group"
+                        {/* 空状态欢迎区 */}
+                        {messages.length === 0 && (
+                            <div className="flex-1 flex flex-col items-center justify-center text-center py-12">
+                                {/* 机器人图标 */}
+                                <div className="relative mb-8">
+                                    <div style={{
+                                        position: 'absolute', inset: -20,
+                                        background: 'radial-gradient(circle, rgba(99,102,241,0.15) 0%, transparent 70%)',
+                                        borderRadius: '50%',
+                                    }} />
+                                    <div
+                                        className="relative w-20 h-20 flex items-center justify-center"
+                                        style={{
+                                            background: 'linear-gradient(135deg, #6366f1, #0ea5e9)',
+                                            borderRadius: 24,
+                                            boxShadow: '0 8px 32px rgba(99,102,241,0.35), 0 2px 8px rgba(14,165,233,0.2)',
+                                            border: '3px solid rgba(255,255,255,0.8)',
+                                        }}
                                     >
-                                        <div className="w-12 h-12 bg-gradient-to-br from-violet-50 to-purple-50 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300 border border-violet-100/50">
-                                            <Package size={24} className="text-violet-600" />
-                                        </div>
-                                        <div>
-                                            <div className="font-bold text-slate-700 text-lg group-hover:text-violet-700 transition-colors">产品介绍</div>
-                                            <div className="text-sm text-slate-400 mt-0.5">例如：公司核心产品总览</div>
-                                        </div>
-                                    </button>
+                                        <Bot size={38} color="white" />
+                                    </div>
+                                    {/* 装饰环 */}
+                                    <div style={{ position: 'absolute', inset: -10, border: '1.5px dashed rgba(99,102,241,0.2)', borderRadius: '50%', animation: 'spinRing 12s linear infinite' }} />
                                 </div>
+
+                                {/* 标题文字：展开操作卡片时隐藏 */}
+                                {!showOperationCards && !showProductCards && (
+                                    <>
+                                        <h2
+                                            className="text-2xl font-extrabold mb-3 tracking-wide"
+                                            style={{ background: 'linear-gradient(135deg, #4f46e5, #0ea5e9)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}
+                                        >
+                                            开启智能操作指引
+                                        </h2>
+                                        <p className="mb-10 max-w-sm leading-relaxed text-sm" style={{ color: '#64748b' }}>
+                                            点击下方模块，快速了解智能分拣平台的核心功能与操作流程。
+                                        </p>
+                                    </>
+                                )}
+
+                                {/* 功能卡片 / 展开子卡片 */}
+                                {!showOperationCards && !showProductCards ? (
+                                    /* 默认两个入口按钮 */
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-lg">
+                                        <button
+                                            onClick={() => setShowOperationCards(true)}
+                                            className="flex items-center gap-3.5 p-4 text-left rounded-2xl transition-all duration-250"
+                                            style={{ background: 'rgba(255,255,255,0.9)', border: '1.5px solid rgba(99,102,241,0.2)', boxShadow: '0 2px 12px rgba(99,102,241,0.08)' }}
+                                            onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(99,102,241,0.5)'; e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 8px 24px rgba(99,102,241,0.18)'; }}
+                                            onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(99,102,241,0.2)'; e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 2px 12px rgba(99,102,241,0.08)'; }}
+                                        >
+                                            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.12), rgba(14,165,233,0.1))', border: '1px solid rgba(99,102,241,0.18)' }}>
+                                                <LayoutDashboard size={20} color="#6366f1" />
+                                            </div>
+                                            <div>
+                                                <div className="font-bold text-sm mb-0.5" style={{ color: '#1e1b4b' }}>操作指导</div>
+                                                <div className="text-xs" style={{ color: '#94a3b8' }}>例如：系统主界面操作</div>
+                                            </div>
+                                        </button>
+
+                                        <button
+                                            onClick={() => setShowProductCards(true)}
+                                            className="flex items-center gap-3.5 p-4 text-left rounded-2xl transition-all duration-250"
+                                            style={{ background: 'rgba(255,255,255,0.9)', border: '1.5px solid rgba(14,165,233,0.22)', boxShadow: '0 2px 12px rgba(14,165,233,0.08)' }}
+                                            onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(14,165,233,0.5)'; e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 8px 24px rgba(14,165,233,0.18)'; }}
+                                            onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(14,165,233,0.22)'; e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 2px 12px rgba(14,165,233,0.08)'; }}
+                                        >
+                                            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'linear-gradient(135deg, rgba(14,165,233,0.12), rgba(168,85,247,0.1))', border: '1px solid rgba(14,165,233,0.18)' }}>
+                                                <Package size={20} color="#0ea5e9" />
+                                            </div>
+                                            <div>
+                                                <div className="font-bold text-sm mb-0.5" style={{ color: '#1e1b4b' }}>产品介绍</div>
+                                                <div className="text-xs" style={{ color: '#94a3b8' }}>例如：公司核心产品总览</div>
+                                            </div>
+                                        </button>
+                                    </div>
+
+                                ) : showOperationCards ? (
+                                    /* 操作指导：两个子卡片 */
+                                    <div className="w-full max-w-2xl">
+                                        <button onClick={() => setShowOperationCards(false)} className="flex items-center gap-1.5 text-xs mb-5 transition-all duration-200" style={{ color: '#6366f1', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 2px' }} onMouseEnter={e => e.currentTarget.style.opacity = '0.7'} onMouseLeave={e => e.currentTarget.style.opacity = '1'}>
+                                            <ArrowLeft size={13} /> 返回
+                                        </button>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                            {/* 无序识配 */}
+                                            <div className="flex flex-col rounded-2xl overflow-hidden transition-all duration-300" style={{ background: 'rgba(255,255,255,0.95)', border: '1.5px solid rgba(99,102,241,0.2)', boxShadow: '0 4px 20px rgba(99,102,241,0.12)' }}>
+                                                <div style={{ height: 5, background: 'linear-gradient(90deg, #6366f1, #0ea5e9)' }} />
+                                                <div className="p-6 flex flex-col flex-1">
+                                                    <div className="flex items-center gap-3 mb-4">
+                                                        <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.12), rgba(14,165,233,0.1))', border: '1px solid rgba(99,102,241,0.18)' }}>
+                                                            <ScanLine size={22} color="#6366f1" />
+                                                        </div>
+                                                        <span className="font-extrabold text-lg" style={{ color: '#1e1b4b' }}>无序识配</span>
+                                                    </div>
+                                                    <p className="text-sm leading-relaxed flex-1 mb-5" style={{ color: '#64748b' }}>基于视觉识别技术，自动扫描无序摆放的物件，智能匹配目标位置，实现高效精准的自动化分拣作业，无需人工预排列。</p>
+                                                    <button onClick={() => handleSend("介绍【无序识配】")} className="w-full py-2.5 rounded-xl text-sm font-semibold transition-all duration-200" style={{ background: 'linear-gradient(135deg, #6366f1, #0ea5e9)', color: 'white', border: 'none', boxShadow: '0 3px 10px rgba(99,102,241,0.3)', cursor: 'pointer' }} onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 6px 18px rgba(99,102,241,0.4)'; }} onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 3px 10px rgba(99,102,241,0.3)'; }}>点击了解更多 →</button>
+                                                </div>
+                                            </div>
+                                            {/* 你画我拼 */}
+                                            <div className="flex flex-col rounded-2xl overflow-hidden transition-all duration-300" style={{ background: 'rgba(255,255,255,0.95)', border: '1.5px solid rgba(14,165,233,0.22)', boxShadow: '0 4px 20px rgba(14,165,233,0.12)' }}>
+                                                <div style={{ height: 5, background: 'linear-gradient(90deg, #0ea5e9, #a855f7)' }} />
+                                                <div className="p-6 flex flex-col flex-1">
+                                                    <div className="flex items-center gap-3 mb-4">
+                                                        <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'linear-gradient(135deg, rgba(14,165,233,0.12), rgba(168,85,247,0.1))', border: '1px solid rgba(14,165,233,0.18)' }}>
+                                                            <LayoutDashboard size={22} color="#0ea5e9" />
+                                                        </div>
+                                                        <span className="font-extrabold text-lg" style={{ color: '#1e1b4b' }}>你画我拼</span>
+                                                    </div>
+                                                    <p className="text-sm leading-relaxed flex-1 mb-5" style={{ color: '#64748b' }}>用户自定义目标图形或拼接方案，系统实时解析指令并驱动机械臂按图索骥完成拼装，让创意与自动化无缝融合。</p>
+                                                    <button onClick={() => handleSend("介绍【你画我拼】")} className="w-full py-2.5 rounded-xl text-sm font-semibold transition-all duration-200" style={{ background: 'linear-gradient(135deg, #0ea5e9, #a855f7)', color: 'white', border: 'none', boxShadow: '0 3px 10px rgba(14,165,233,0.3)', cursor: 'pointer' }} onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 6px 18px rgba(14,165,233,0.4)'; }} onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 3px 10px rgba(14,165,233,0.3)'; }}>点击了解更多 →</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                ) : (
+                                    /* 产品介绍：三个子卡片 */
+                                    <div className="w-full max-w-3xl">
+                                        <button onClick={() => setShowProductCards(false)} className="flex items-center gap-1.5 text-xs mb-5 transition-all duration-200" style={{ color: '#6366f1', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 2px' }} onMouseEnter={e => e.currentTarget.style.opacity = '0.7'} onMouseLeave={e => e.currentTarget.style.opacity = '1'}>
+                                            <ArrowLeft size={13} /> 返回
+                                        </button>
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                                            {/* 筑视分拣 */}
+                                            <div className="flex flex-col rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.95)', border: '1.5px solid rgba(99,102,241,0.2)', boxShadow: '0 4px 20px rgba(99,102,241,0.12)' }}>
+                                                <div style={{ height: 5, background: 'linear-gradient(90deg, #6366f1, #0ea5e9)' }} />
+                                                <div className="p-6 flex flex-col flex-1">
+                                                    <div className="flex items-center gap-3 mb-4">
+                                                        <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.12), rgba(14,165,233,0.1))', border: '1px solid rgba(99,102,241,0.18)' }}>
+                                                            <ScanLine size={22} color="#6366f1" />
+                                                        </div>
+                                                        <span className="font-extrabold text-lg" style={{ color: '#1e1b4b' }}>筑视分拣</span>
+                                                    </div>
+                                                    <p className="text-sm leading-relaxed flex-1 mb-5" style={{ color: '#64748b' }}>融合深度学习与机器视觉，实现复杂工况下的高精度物料自动分类与精准抓取，大幅提升产线分拣效率。</p>
+                                                    <button onClick={() => handleSend("介绍【筑视分拣】")} className="w-full py-2.5 rounded-xl text-sm font-semibold transition-all duration-200" style={{ background: 'linear-gradient(135deg, #6366f1, #0ea5e9)', color: 'white', border: 'none', boxShadow: '0 3px 10px rgba(99,102,241,0.3)', cursor: 'pointer' }} onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 6px 18px rgba(99,102,241,0.4)'; }} onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 3px 10px rgba(99,102,241,0.3)'; }}>点击了解更多 →</button>
+                                                </div>
+                                            </div>
+                                            {/* 筑视检测 */}
+                                            <div className="flex flex-col rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.95)', border: '1.5px solid rgba(14,165,233,0.22)', boxShadow: '0 4px 20px rgba(14,165,233,0.12)' }}>
+                                                <div style={{ height: 5, background: 'linear-gradient(90deg, #0ea5e9, #06b6d4)' }} />
+                                                <div className="p-6 flex flex-col flex-1">
+                                                    <div className="flex items-center gap-3 mb-4">
+                                                        <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'linear-gradient(135deg, rgba(14,165,233,0.12), rgba(6,182,212,0.1))', border: '1px solid rgba(14,165,233,0.18)' }}>
+                                                            <Package size={22} color="#0ea5e9" />
+                                                        </div>
+                                                        <span className="font-extrabold text-lg" style={{ color: '#1e1b4b' }}>筑视检测</span>
+                                                    </div>
+                                                    <p className="text-sm leading-relaxed flex-1 mb-5" style={{ color: '#64748b' }}>基于高分辨率图像分析与缺陷识别算法，对产品表面及结构进行全方位自动化质检，显著降低漏检率。</p>
+                                                    <button onClick={() => handleSend("介绍【筑视检测】")} className="w-full py-2.5 rounded-xl text-sm font-semibold transition-all duration-200" style={{ background: 'linear-gradient(135deg, #0ea5e9, #06b6d4)', color: 'white', border: 'none', boxShadow: '0 3px 10px rgba(14,165,233,0.3)', cursor: 'pointer' }} onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 6px 18px rgba(14,165,233,0.4)'; }} onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 3px 10px rgba(14,165,233,0.3)'; }}>点击了解更多 →</button>
+                                                </div>
+                                            </div>
+                                            {/* 筑视焊接 */}
+                                            <div className="flex flex-col rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.95)', border: '1.5px solid rgba(168,85,247,0.22)', boxShadow: '0 4px 20px rgba(168,85,247,0.12)' }}>
+                                                <div style={{ height: 5, background: 'linear-gradient(90deg, #a855f7, #6366f1)' }} />
+                                                <div className="p-6 flex flex-col flex-1">
+                                                    <div className="flex items-center gap-3 mb-4">
+                                                        <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'linear-gradient(135deg, rgba(168,85,247,0.12), rgba(99,102,241,0.1))', border: '1px solid rgba(168,85,247,0.18)' }}>
+                                                            <LayoutDashboard size={22} color="#a855f7" />
+                                                        </div>
+                                                        <span className="font-extrabold text-lg" style={{ color: '#1e1b4b' }}>筑视焊接</span>
+                                                    </div>
+                                                    <p className="text-sm leading-relaxed flex-1 mb-5" style={{ color: '#64748b' }}>结合视觉引导与路径规划算法，实现焊缝自动识别与精准焊接轨迹控制，保障焊接质量稳定一致。</p>
+                                                    <button onClick={() => handleSend("介绍【筑视焊接】")} className="w-full py-2.5 rounded-xl text-sm font-semibold transition-all duration-200" style={{ background: 'linear-gradient(135deg, #a855f7, #6366f1)', color: 'white', border: 'none', boxShadow: '0 3px 10px rgba(168,85,247,0.3)', cursor: 'pointer' }} onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 6px 18px rgba(168,85,247,0.4)'; }} onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 3px 10px rgba(168,85,247,0.3)'; }}>点击了解更多 →</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
 
+                        {/* 消息列表 */}
                         {messages.map((msg, idx) => {
                             const isLastAiMessage = msg.role === 'ai' && idx === messages.length - 1;
                             const isThinking = isLastAiMessage && isLoading && !displayedContent;
                             const contentToShow = isLastAiMessage && (isLoading || isTyping) ? displayedContent : msg.content;
 
                             return (
-                                <div key={idx} className={`flex gap-4 mb-4 w-full animate-in fade-in slide-in-from-bottom-2 duration-300 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                <div key={idx} className={`flex gap-3 w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
 
-                                    {/* 左侧：AI 头像 */}
+                                    {/* AI 头像 */}
                                     {msg.role === 'ai' && (
-                                        <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-white to-slate-100 border border-slate-200 shadow-sm flex items-center justify-center flex-shrink-0 mt-1">
-                                            <Bot size={22} className={`text-violet-600 ${isThinking || isTyping ? 'animate-pulse' : ''}`} />
+                                        <div
+                                            className="w-8 h-8 flex-shrink-0 mt-0.5 rounded-xl flex items-center justify-center"
+                                            style={{ background: 'linear-gradient(135deg, #6366f1, #0ea5e9)', border: '2px solid rgba(255,255,255,0.9)', boxShadow: '0 2px 10px rgba(99,102,241,0.25)' }}
+                                        >
+                                            <Bot size={16} color="white" />
                                         </div>
                                     )}
 
-                                    {/* 中间核心区 */}
-                                    <div className={`flex flex-col gap-2.5 max-w-[85%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-
-                                        {/* 消息气泡 UI 升级 */}
-                                        <div className={`px-5 py-4 rounded-3xl text-[15px] leading-relaxed shadow-sm transition-all duration-300 w-fit border ${msg.role === 'user'
-                                            ? 'bg-gradient-to-br from-blue-600 to-violet-600 text-white rounded-tr-sm border-transparent shadow-blue-500/20'
-                                            : 'bg-white/90 backdrop-blur-md border-white/60 text-slate-800 rounded-tl-sm shadow-slate-200/50'
-                                            }`}>
+                                    {/* 气泡 */}
+                                    <div className="max-w-[83%] flex flex-col" style={{ alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
+                                        <div
+                                            className="px-4 py-3 text-sm leading-relaxed"
+                                            style={{
+                                                borderRadius: msg.role === 'user' ? '16px 3px 16px 16px' : '3px 16px 16px 16px',
+                                                ...(msg.role === 'user' ? {
+                                                    background: 'linear-gradient(135deg, #6366f1, #0ea5e9)',
+                                                    color: 'white',
+                                                    boxShadow: '0 4px 16px rgba(99,102,241,0.3)',
+                                                } : {
+                                                    background: 'rgba(255,255,255,0.95)',
+                                                    color: '#1e293b',
+                                                    border: '1px solid rgba(99,102,241,0.12)',
+                                                    boxShadow: '0 2px 12px rgba(99,102,241,0.07)',
+                                                })
+                                            }}
+                                        >
                                             {isThinking ? (
-                                                <div className="flex items-center gap-1.5 h-6 px-1">
-                                                    <div className="w-2 h-2 bg-violet-400 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-                                                    <div className="w-2 h-2 bg-violet-400 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-                                                    <div className="w-2 h-2 bg-violet-400 rounded-full animate-bounce"></div>
-                                                    <span className="text-sm font-medium text-violet-500 ml-2 animate-pulse">正在整理思绪...</span>
+                                                <div className="flex items-center gap-1.5 px-1 py-0.5">
+                                                    {[0, 1, 2].map(i => (
+                                                        <div key={i} style={{ width: 7, height: 7, borderRadius: '50%', background: 'linear-gradient(135deg, #6366f1, #0ea5e9)', animation: `bubbleBounce 1s ease-in-out ${i * 0.15}s infinite` }} />
+                                                    ))}
+                                                    <span className="text-xs ml-1.5" style={{ color: '#6366f1' }}>正在整理思绪...</span>
                                                 </div>
                                             ) : (
                                                 <div className={`prose prose-sm max-w-none ${msg.role === 'user' ? 'prose-invert' : 'prose-slate'}`}>
@@ -620,48 +724,92 @@ export default function TrainingAssistant({ onBack, userId }) {
                                         </div>
                                     </div>
 
-                                    {/* 右侧：用户头像 */}
+                                    {/* 用户头像 */}
                                     {msg.role === 'user' && (
-                                        <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center flex-shrink-0 mt-1 shadow-sm border border-blue-200/50">
-                                            <User size={20} className="text-blue-600" />
+                                        <div
+                                            className="w-8 h-8 flex-shrink-0 mt-0.5 rounded-xl flex items-center justify-center"
+                                            style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.15), rgba(14,165,233,0.12))', border: '2px solid rgba(255,255,255,0.9)', boxShadow: '0 2px 8px rgba(99,102,241,0.12)' }}
+                                        >
+                                            <User size={15} color="#6366f1" />
                                         </div>
                                     )}
                                 </div>
                             );
                         })}
+
                         {/* 滚动锚点 */}
-                        <div ref={messagesEndRef} className="h-4 shrink-0" />
+                        <div ref={messagesEndRef} className="h-2 shrink-0" />
                     </div>
                 </div>
 
-                {/* 输入框区域 (不再使用 absolute 脱离文档流，稳稳扎根在底部) */}
-                <div className="shrink-0 relative pt-4 pb-8 px-4 z-20">
-                    {/* 微渐变底色，平滑过渡聊天区和输入区 */}
-                    <div className="absolute inset-0 bg-gradient-to-t from-[#f4f7f9] via-[#f4f7f9]/90 to-transparent pointer-events-none"></div>
-
-                    <div className="max-w-3xl mx-auto relative group flex flex-col justify-end z-10">
-                        {/* 输入框主体 (Glassmorphism + 悬浮岛屿感) */}
-                        <div className="bg-white/80 backdrop-blur-xl border border-white/60 rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex items-end p-2.5 gap-2 focus-within:ring-4 focus-within:ring-violet-500/10 focus-within:border-violet-300 focus-within:bg-white transition-all duration-300">
+                {/* 输入框区域 — 与原始代码相同：absolute bottom-0，浮在底部 */}
+                <div
+                    className="absolute bottom-0 left-0 right-0 px-4 pt-6 pb-6"
+                    style={{
+                        background: 'linear-gradient(to top, rgba(240,244,255,1) 50%, rgba(240,244,255,0.9) 75%, transparent)',
+                    }}
+                >
+                    <div className="max-w-3xl mx-auto">
+                        <div
+                            className="flex items-end gap-2.5 px-3 py-2.5 rounded-2xl transition-all duration-200"
+                            style={{
+                                background: 'rgba(255,255,255,0.95)',
+                                border: '1.5px solid rgba(99,102,241,0.2)',
+                                boxShadow: '0 4px 20px rgba(99,102,241,0.1), 0 1px 4px rgba(0,0,0,0.04)',
+                                backdropFilter: 'blur(16px)',
+                            }}
+                        >
                             <textarea
                                 value={input}
                                 onChange={(e) => setInput(e.target.value)}
                                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                                placeholder={"向智能分拣助手提问..."}
-                                className="w-full max-h-32 bg-transparent border-none focus:ring-0 resize-none p-3.5 text-slate-700 placeholder-slate-400 text-[15px] leading-relaxed"
+                                placeholder="向智能分拣助手提问..."
+                                className="flex-1 bg-transparent border-none outline-none resize-none text-sm leading-relaxed"
+                                style={{ maxHeight: 128, padding: '4px', color: '#1e293b', fontFamily: 'inherit' }}
                                 rows={1}
                                 disabled={isLoading}
+                                onInput={e => { e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 128) + 'px'; }}
+                                onFocus={e => {
+                                    const w = e.target.closest('div[class*="rounded-2xl"]');
+                                    if (w) { w.style.borderColor = 'rgba(99,102,241,0.45)'; w.style.boxShadow = '0 4px 20px rgba(99,102,241,0.18), 0 1px 4px rgba(0,0,0,0.04)'; }
+                                }}
+                                onBlur={e => {
+                                    const w = e.target.closest('div[class*="rounded-2xl"]');
+                                    if (w) { w.style.borderColor = 'rgba(99,102,241,0.2)'; w.style.boxShadow = '0 4px 20px rgba(99,102,241,0.1), 0 1px 4px rgba(0,0,0,0.04)'; }
+                                }}
                             />
-
-                            <div className="flex items-center mb-1.5 mr-1 gap-2">
+                            <div className="flex items-center mb-0.5">
                                 {isLoading ? (
-                                    <button onClick={handleStop} className="p-3 rounded-xl bg-rose-50 text-rose-500 hover:bg-rose-100 transition-colors"><StopCircle size={22} /></button>
+                                    <button
+                                        onClick={handleStop}
+                                        className="w-9 h-9 flex items-center justify-center rounded-xl transition-all duration-200"
+                                        style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#ef4444' }}
+                                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.15)'}
+                                        onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.08)'}
+                                    >
+                                        <StopCircle size={18} />
+                                    </button>
                                 ) : (
                                     <button
                                         onClick={() => handleSend()}
                                         disabled={!input.trim() && attachedFiles.length === 0}
-                                        className={`p-3 rounded-2xl transition-all duration-300 flex items-center justify-center ${input.trim() || attachedFiles.length > 0 ? 'bg-gradient-to-r from-blue-600 to-violet-600 text-white shadow-lg shadow-violet-500/30 hover:scale-105 hover:shadow-xl hover:shadow-violet-500/40' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
+                                        className="w-9 h-9 flex items-center justify-center rounded-xl transition-all duration-200"
+                                        style={input.trim() || attachedFiles.length > 0 ? {
+                                            background: 'linear-gradient(135deg, #6366f1, #0ea5e9)',
+                                            border: 'none',
+                                            boxShadow: '0 4px 14px rgba(99,102,241,0.4)',
+                                            color: 'white',
+                                            cursor: 'pointer',
+                                        } : {
+                                            background: 'rgba(99,102,241,0.07)',
+                                            border: '1px solid rgba(99,102,241,0.15)',
+                                            color: 'rgba(99,102,241,0.35)',
+                                            cursor: 'not-allowed',
+                                        }}
+                                        onMouseEnter={e => { if (input.trim() || attachedFiles.length > 0) { e.currentTarget.style.transform = 'scale(1.07)'; e.currentTarget.style.boxShadow = '0 6px 20px rgba(99,102,241,0.5)'; } }}
+                                        onMouseLeave={e => { if (input.trim() || attachedFiles.length > 0) { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 14px rgba(99,102,241,0.4)'; } }}
                                     >
-                                        <Send size={20} className={input.trim() || attachedFiles.length > 0 ? "translate-x-[1px] -translate-y-[1px]" : ""} />
+                                        <Send size={16} style={{ transform: 'translate(1px,-1px)' }} />
                                     </button>
                                 )}
                             </div>
@@ -669,12 +817,33 @@ export default function TrainingAssistant({ onBack, userId }) {
                     </div>
                 </div>
             </div>
-            {playingVideo && (
-                <VideoPlayerModal
-                    video={playingVideo}
-                    onClose={() => setPlayingVideo(null)}
-                />
-            )}
+
+            {/* 视频模态框 */}
+            {
+                playingVideo && (
+                    <VideoPlayerModal video={playingVideo} onClose={() => setPlayingVideo(null)} />
+                )
+            }
+
+            <style>{`
+                @keyframes navDot {
+                    0%, 100% { opacity: 0.3; transform: scale(0.75); }
+                    50% { opacity: 1; transform: scale(1.2); }
+                }
+                @keyframes bubbleBounce {
+                    0%, 100% { transform: translateY(0); opacity: 0.5; }
+                    50% { transform: translateY(-5px); opacity: 1; }
+                }
+                @keyframes spinRing {
+                    from { transform: rotate(0deg); }
+                    to { transform: rotate(360deg); }
+                }
+                .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+                .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+                .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(99,102,241,0.2); border-radius: 2px; }
+                .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(99,102,241,0.4); }
+                textarea::placeholder { color: #94a3b8 !important; }
+            `}</style>
         </div >
     );
 }

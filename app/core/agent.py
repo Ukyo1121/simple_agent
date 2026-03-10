@@ -97,7 +97,7 @@ def search_factory_knowledge(query: str) -> str:
     :param query: 必要参数，字符串类型，用于输入用户的具体问题。
     :return: 返回查询的结果和来源文件，包含图文混排内容。
     """
-    print(f"\n🔍 [Agent 动作] 正在调用知识库查询: {query}")
+    print(f"\n🔍 [Agent 动作] 正在调用资料库查询: {query}")
     vector_store = None
     try:
         # 连接 ES 数据库
@@ -157,7 +157,7 @@ def search_factory_knowledge(query: str) -> str:
         final_response = "".join(final_context_list) # 使用空字符串连接，更紧凑
         
         if not final_response.strip():
-            return "未在知识库中找到相关内容。"
+            return "未在资料库中找到相关内容。"
 
         # Debug
         print("✅ [Debug] 已按页码重排检索结果")
@@ -263,11 +263,11 @@ llm = ChatOpenAI(
 
 system_prompt = SystemMessage(content="""
     ### 角色定义
-    你是一个严谨专业的智能分拣平台助手。你的核心任务是根据知识库的内容，指导用户操作“智能分拣平台”以及介绍公司的相关产品。
-    当用户提出问题时，你必须调用 `search_factory_knowledge` 工具查询知识库，并严格基于检索到的知识库内容来回答问题。
+    你是一个严谨专业的AI问答助手。你的核心任务是根据资料库的内容，指导用户操作“智能装配与互动拼图工作站”以及介绍华工科技公司的分拣、检测、焊接三个模块的产品。
+    当用户提出问题时，你必须调用 `search_factory_knowledge` 工具查询资料库，并严格基于检索到的资料内容来回答问题。
 
    ### 详细工作流
-    **第1步：查询知识库**
+    **第1步：查询资料库**
     - 分析用户问题，提取关键词，并调用 `search_factory_knowledge` 工具进行查询。
 
     **第2步：回答问题**
@@ -280,15 +280,14 @@ system_prompt = SystemMessage(content="""
       - 请直接输出：“抱歉，该问题我暂时无法回答”。
 
     ### 注意事项
-    1. **严禁编造**：不允许在查询工具返回的内容上增加无中生有的内容。你只能忠实于知识库提供内容。
-    2. **完整性与图文对应**：确保输出步骤的完整性；知识库步骤中配有的图片，回答时坚决不能遗漏。
+    1. **严禁编造**：不允许在查询工具返回的内容上增加无中生有的内容。你只能忠实于资料库提供内容。
+    2. **完整性与图文对应**：确保输出步骤的完整性；资料库步骤中配有的图片，回答时坚决不能遗漏。
     3. **确定性**：如果用户的问题不清晰（例如只说了“怎么操作”或“介绍下产品”），请追问具体的操作界面名称或产品型号，不要盲目罗列。
 
     ### 工具调用格式规范
     **你必须使用标准的 OpenAI Function Calling 格式。**
     **严禁**输出 `<tool_call>`, `<function>` 等 XML 标签。
     **严禁**输出 Base64 编码。
-    【严格限制】在输出内容时，如果提供的知识库检索结果中没有包含具体的图片 URL 链接，**严禁**自己捏造、猜测或生成任何 Markdown 格式的图片链接（如 ![图](url)）。
 
     ### 回答格式
     - 使用清晰易读的 Markdown 格式（如使用加粗、列表缩进等）。
@@ -400,7 +399,7 @@ async def call_model(state: AgentState):
         if not response.tool_calls:
             try:
                 video_titles = set()
-                # 倒序遍历本轮的对话，寻找工具返回的知识库文本
+                # 倒序遍历本轮的对话，寻找工具返回的资料库文本
                 for msg in reversed(messages):
                     if isinstance(msg, HumanMessage):
                         break  # 只看本轮的
