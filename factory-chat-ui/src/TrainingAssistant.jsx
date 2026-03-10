@@ -1,14 +1,14 @@
 import { useState, useRef, useEffect } from 'react';
 import {
     Send, Plus, MessageSquare, User, Bot, Loader2, StopCircle,
-    Mic, ArrowLeft, ScanLine, Trash2, Menu, Paperclip, X, LayoutDashboard, Package, Play, Video
+    Mic, ArrowLeft, Trash2, Menu, Paperclip, X, LayoutDashboard, Package, Play, Video, Sparkles
 } from 'lucide-react';
+import { Network, Zap, ScanLine, BrainCircuit, Cpu } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { API_BASE_URL } from "./config";
 import remarkGfm from 'remark-gfm';
 
 const API_URL = `${API_BASE_URL}/chat`;
-const VOICE_API_URL = `${API_BASE_URL}/voice`;
 
 function ChatMiniVideoCard({ video, onPlay }) {
     return (
@@ -476,17 +476,14 @@ export default function TrainingAssistant({ onBack, userId }) {
 
                     {/* 标题 */}
                     <div className="flex items-center gap-2.5">
-                        <div
-                            className="w-8 h-8 rounded-lg flex items-center justify-center"
-                            style={{ background: 'linear-gradient(135deg, #6366f1, #0ea5e9)', boxShadow: '0 4px 14px rgba(99,102,241,0.35)' }}
-                        >
-                            <ScanLine size={17} color="white" />
+                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-100 to-indigo-100 flex items-center justify-center border border-violet-200/50 shadow-sm">
+                            <BrainCircuit size={18} className="text-violet-600" />
                         </div>
                         <span
                             className="font-extrabold text-sm tracking-widest"
                             style={{ background: 'linear-gradient(135deg, #4f46e5, #0ea5e9)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}
                         >
-                            智能分拣助手
+                            华工小筑
                         </span>
                         <div className="flex gap-1 ml-1">
                             {[0, 1, 2].map(i => (
@@ -537,7 +534,7 @@ export default function TrainingAssistant({ onBack, userId }) {
                                             开启智能操作指引
                                         </h2>
                                         <p className="mb-10 max-w-sm leading-relaxed text-sm" style={{ color: '#64748b' }}>
-                                            点击下方模块，快速了解智能分拣平台的核心功能与操作流程。
+                                            点击下方模块，快速了解智能装配与互动拼图工作站的核心功能与操作流程以及华工科技核心产品介绍
                                         </p>
                                     </>
                                 )}
@@ -630,7 +627,7 @@ export default function TrainingAssistant({ onBack, userId }) {
                                                 <div className="p-6 flex flex-col flex-1">
                                                     <div className="flex items-center gap-3 mb-4">
                                                         <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.12), rgba(14,165,233,0.1))', border: '1px solid rgba(99,102,241,0.18)' }}>
-                                                            <ScanLine size={22} color="#6366f1" />
+                                                            <Network size={24} color="#6366f1" />
                                                         </div>
                                                         <span className="font-extrabold text-lg" style={{ color: '#1e1b4b' }}>筑视分拣</span>
                                                     </div>
@@ -638,31 +635,31 @@ export default function TrainingAssistant({ onBack, userId }) {
                                                     <button onClick={() => handleSend("介绍【筑视分拣】")} className="w-full py-2.5 rounded-xl text-sm font-semibold transition-all duration-200" style={{ background: 'linear-gradient(135deg, #6366f1, #0ea5e9)', color: 'white', border: 'none', boxShadow: '0 3px 10px rgba(99,102,241,0.3)', cursor: 'pointer' }} onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 6px 18px rgba(99,102,241,0.4)'; }} onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 3px 10px rgba(99,102,241,0.3)'; }}>点击了解更多 →</button>
                                                 </div>
                                             </div>
-                                            {/* 筑视检测 */}
+                                            {/* 筑视焊接 */}
                                             <div className="flex flex-col rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.95)', border: '1.5px solid rgba(14,165,233,0.22)', boxShadow: '0 4px 20px rgba(14,165,233,0.12)' }}>
                                                 <div style={{ height: 5, background: 'linear-gradient(90deg, #0ea5e9, #06b6d4)' }} />
                                                 <div className="p-6 flex flex-col flex-1">
                                                     <div className="flex items-center gap-3 mb-4">
                                                         <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'linear-gradient(135deg, rgba(14,165,233,0.12), rgba(6,182,212,0.1))', border: '1px solid rgba(14,165,233,0.18)' }}>
-                                                            <Package size={22} color="#0ea5e9" />
+                                                            <Zap size={24} color="#0ea5e9" />
                                                         </div>
-                                                        <span className="font-extrabold text-lg" style={{ color: '#1e1b4b' }}>筑视检测</span>
+                                                        <span className="font-extrabold text-lg" style={{ color: '#1e1b4b' }}>筑视焊接</span>
                                                     </div>
-                                                    <p className="text-sm leading-relaxed flex-1 mb-5" style={{ color: '#64748b' }}>基于高分辨率图像分析与缺陷识别算法，对产品表面及结构进行全方位自动化质检，显著降低漏检率。</p>
-                                                    <button onClick={() => handleSend("介绍【筑视检测】")} className="w-full py-2.5 rounded-xl text-sm font-semibold transition-all duration-200" style={{ background: 'linear-gradient(135deg, #0ea5e9, #06b6d4)', color: 'white', border: 'none', boxShadow: '0 3px 10px rgba(14,165,233,0.3)', cursor: 'pointer' }} onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 6px 18px rgba(14,165,233,0.4)'; }} onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 3px 10px rgba(14,165,233,0.3)'; }}>点击了解更多 →</button>
+                                                    <p className="text-sm leading-relaxed flex-1 mb-5" style={{ color: '#64748b' }}>结合视觉引导与路径规划算法，实现焊缝自动识别与精准焊接轨迹控制，保障焊接质量稳定一致。</p>
+                                                    <button onClick={() => handleSend("介绍【筑视焊接】")} className="w-full py-2.5 rounded-xl text-sm font-semibold transition-all duration-200" style={{ background: 'linear-gradient(135deg, #0ea5e9, #06b6d4)', color: 'white', border: 'none', boxShadow: '0 3px 10px rgba(14,165,233,0.3)', cursor: 'pointer' }} onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 6px 18px rgba(14,165,233,0.4)'; }} onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 3px 10px rgba(14,165,233,0.3)'; }}>点击了解更多 →</button>
                                                 </div>
                                             </div>
-                                            {/* 筑视焊接 */}
+                                            {/* 筑视检测 */}
                                             <div className="flex flex-col rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.95)', border: '1.5px solid rgba(168,85,247,0.22)', boxShadow: '0 4px 20px rgba(168,85,247,0.12)' }}>
                                                 <div style={{ height: 5, background: 'linear-gradient(90deg, #a855f7, #6366f1)' }} />
                                                 <div className="p-6 flex flex-col flex-1">
                                                     <div className="flex items-center gap-3 mb-4">
                                                         <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'linear-gradient(135deg, rgba(168,85,247,0.12), rgba(99,102,241,0.1))', border: '1px solid rgba(168,85,247,0.18)' }}>
-                                                            <LayoutDashboard size={22} color="#a855f7" />
+                                                            <ScanLine size={24} color="#a855f7" />
                                                         </div>
-                                                        <span className="font-extrabold text-lg" style={{ color: '#1e1b4b' }}>筑视焊接</span>
+                                                        <span className="font-extrabold text-lg" style={{ color: '#1e1b4b' }}>筑视检测</span>
                                                     </div>
-                                                    <p className="text-sm leading-relaxed flex-1 mb-5" style={{ color: '#64748b' }}>结合视觉引导与路径规划算法，实现焊缝自动识别与精准焊接轨迹控制，保障焊接质量稳定一致。</p>
+                                                    <p className="text-sm leading-relaxed flex-1 mb-5" style={{ color: '#64748b' }}>基于高分辨率图像分析与缺陷识别算法，对产品表面及结构进行全方位自动化质检，显著降低漏检率。</p>
                                                     <button onClick={() => handleSend("介绍【筑视焊接】")} className="w-full py-2.5 rounded-xl text-sm font-semibold transition-all duration-200" style={{ background: 'linear-gradient(135deg, #a855f7, #6366f1)', color: 'white', border: 'none', boxShadow: '0 3px 10px rgba(168,85,247,0.3)', cursor: 'pointer' }} onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 6px 18px rgba(168,85,247,0.4)'; }} onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 3px 10px rgba(168,85,247,0.3)'; }}>点击了解更多 →</button>
                                                 </div>
                                             </div>
@@ -677,7 +674,21 @@ export default function TrainingAssistant({ onBack, userId }) {
                             const isLastAiMessage = msg.role === 'ai' && idx === messages.length - 1;
                             const isThinking = isLastAiMessage && isLoading && !displayedContent;
                             const contentToShow = isLastAiMessage && (isLoading || isTyping) ? displayedContent : msg.content;
+                            // ✨ 【新增 1】：识别当前话题，并检测历史记录
+                            const prevMsg = idx > 0 ? messages[idx - 1] : null;
+                            const isTopicWuXu = prevMsg?.content?.includes("无序识配");
+                            const isTopicNiHua = prevMsg?.content?.includes("你画我拼");
 
+                            // 【逻辑升级】：遍历当前进度之前的所有用户消息，看看是否两个模块都已经问过了
+                            const userMessagesUpToNow = messages.slice(0, idx).filter(m => m.role === 'user');
+                            const hasAskedWuXu = userMessagesUpToNow.some(m => m.content?.includes("无序识配"));
+                            const hasAskedNiHua = userMessagesUpToNow.some(m => m.content?.includes("你画我拼"));
+
+                            // 如果两个都问过了，hasAskedBoth 就是 true
+                            const hasAskedBoth = hasAskedWuXu && hasAskedNiHua;
+
+                            // 判断是否需要显示追问卡片
+                            const showFollowUpModal = isLastAiMessage && !isLoading && !isTyping && (isTopicWuXu || isTopicNiHua);
                             return (
                                 <div key={idx} className={`flex gap-3 w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
 
@@ -714,7 +725,7 @@ export default function TrainingAssistant({ onBack, userId }) {
                                                     {[0, 1, 2].map(i => (
                                                         <div key={i} style={{ width: 7, height: 7, borderRadius: '50%', background: 'linear-gradient(135deg, #6366f1, #0ea5e9)', animation: `bubbleBounce 1s ease-in-out ${i * 0.15}s infinite` }} />
                                                     ))}
-                                                    <span className="text-xs ml-1.5" style={{ color: '#6366f1' }}>正在整理思绪...</span>
+                                                    <span className="text-xs ml-1.5" style={{ color: '#6366f1' }}>正在思考</span>
                                                 </div>
                                             ) : (
                                                 <div className={`prose prose-sm max-w-none ${msg.role === 'user' ? 'prose-invert' : 'prose-slate'}`}>
@@ -722,6 +733,58 @@ export default function TrainingAssistant({ onBack, userId }) {
                                                 </div>
                                             )}
                                         </div>
+                                        {/* ✨ 新增 2：高级磨砂玻璃质感追问卡片 */}
+                                        {showFollowUpModal && (
+                                            <div className="mt-3 w-[320px] relative group animate-in slide-in-from-bottom-4 fade-in duration-700">
+
+                                                {/* 1. 底层环境光晕 (让卡片看起来像是悬浮发光的) */}
+                                                <div className="absolute -inset-1 bg-gradient-to-r from-violet-500/20 to-indigo-500/20 rounded-[1.5rem] blur-xl opacity-60 group-hover:opacity-100 transition-opacity duration-500"></div>
+
+                                                {/* 2. 玻璃拟态主面板 */}
+                                                <div className="relative bg-white/40 backdrop-blur-xl border border-white/60 p-4 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.08)] overflow-hidden">
+
+                                                    {/* 玻璃反光切面 (增加立体感) */}
+                                                    <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-white to-transparent opacity-80"></div>
+
+                                                    <div className="flex items-center gap-2.5 mb-4">
+                                                        <div className="w-7 h-7 flex items-center justify-center ">
+                                                            <Sparkles size={16} className="text-violet-500" />
+                                                        </div>
+                                                        <p className="text-[14px] font-bold bg-clip-text text-transparent bg-gradient-to-r from-slate-800 to-slate-600 leading-tight">
+                                                            接下来需要为您介绍其他内容吗？
+                                                        </p>
+                                                    </div>
+
+                                                    <div className="flex gap-2.5">
+                                                        {/* 如果没有两个都问过，才显示推荐另一个产品的按钮 */}
+                                                        {!hasAskedBoth && (
+                                                            <button
+                                                                onClick={() => handleSend(isTopicWuXu ? "介绍【你画我拼】" : "介绍【无序识配】")}
+                                                                className="flex-1 relative overflow-hidden bg-gradient-to-r from-violet-500 to-indigo-500 hover:from-violet-600 hover:to-indigo-600 text-white text-[13px] font-medium py-2.5 px-3 rounded-xl transition-all duration-300 shadow-md shadow-violet-500/20 hover:shadow-lg hover:shadow-violet-500/40 hover:-translate-y-0.5 active:translate-y-0"
+                                                            >
+                                                                <span className="relative z-10 flex items-center justify-center gap-1.5">
+                                                                    <Play size={12} fill="currentColor" />
+                                                                    {isTopicWuXu ? "【你画我拼】" : "【无序识配】"}
+                                                                </span>
+                                                            </button>
+                                                        )}
+
+                                                        {/* 次按钮：公司核心产品（始终显示。如果上面的按钮隐藏了，它会自动占满全宽） */}
+                                                        <button
+                                                            onClick={() => {
+                                                                setMessages([]);
+                                                                setActiveThreadId(null);
+                                                                setShowProductCards(true);
+                                                                setShowOperationCards(false);
+                                                            }}
+                                                            className="flex-1 w-full bg-white/50 hover:bg-white/80 backdrop-blur-md text-slate-700 border border-white/60 hover:border-violet-300 text-[13px] font-medium py-2.5 px-3 rounded-xl transition-all duration-300 shadow-sm hover:shadow hover:-translate-y-0.5 active:translate-y-0"
+                                                        >
+                                                            公司核心产品
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
 
                                     {/* 用户头像 */}
@@ -744,7 +807,7 @@ export default function TrainingAssistant({ onBack, userId }) {
 
                 {/* 输入框区域 — 与原始代码相同：absolute bottom-0，浮在底部 */}
                 <div
-                    className="absolute bottom-0 left-0 right-0 px-4 pt-6 pb-6"
+                    className="absolute bottom-0 left-0 right-0 px-4 pt-6 pb-10"
                     style={{
                         background: 'linear-gradient(to top, rgba(240,244,255,1) 50%, rgba(240,244,255,0.9) 75%, transparent)',
                     }}
