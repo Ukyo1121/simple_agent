@@ -37,6 +37,8 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from psycopg_pool import AsyncConnectionPool
 from contextlib import asynccontextmanager
 from passlib.context import CryptContext
+# 导入你的视频管理函数
+from app.core.video_manager import load_metadata
 
 # 加载环境变量
 from dotenv import load_dotenv
@@ -79,7 +81,7 @@ Settings.llm = None
 # 配置 Reranker (核心竞争力: 重排序)
 reranker = FlagEmbeddingReranker(
     model="models/hub/models--BAAI--bge-reranker-base", 
-    top_n=5,
+    top_n=15,
     use_fp16=True  # 必须开启半精度，进一步省显存
 )
 
@@ -107,7 +109,7 @@ def search_factory_knowledge(query: str) -> str:
 
         # RAG Engine
         rag_engine = index.as_query_engine(
-            similarity_top_k=10,  # 粗排
+            similarity_top_k=20,  # 粗排
             node_postprocessors=[reranker], # 精排
             verbose=True,
             response_mode="no_text"
@@ -180,60 +182,8 @@ def search_factory_knowledge(query: str) -> str:
             except Exception as e:
                 pass  # 忽略关闭时的错误
 
-@tool
-def record_missing_knowledge(user_query: str, reason: str = "未检索到相关文档") -> str:
-    """
-    当 'search_factory_knowledge' 工具无法在知识库中找到答案，或者检索到的内容与用户问题不匹配时，
-    **必须**调用此工具将问题记录到待解答库中。
-    :param user_query: 用户的原始问题。
-    :param reason: 记录原因（例如：知识库无结果、结果不相关）。
-    :return: 返回记录成功的提示。
-    """
-    print(f"\n📝 [Agent 动作] 正在记录缺失知识: {user_query}")
-
-    # 读取旧数据
-    data = []
-    if os.path.exists(UNANSWERED_FILE):
-        try:
-            with open(UNANSWERED_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-        except:
-            data = []
-    
-    # 去重逻辑：检查是否已存在相同的 query
-    for item in data:
-        # 使用 strip() 去除首尾空格，确保匹配准确
-        if item.get("query", "").strip() == user_query.strip():
-            print(f"⚠️ [Agent 动作] 发现待解答库中已存在该问题，跳过写入: {user_query}")
-            return "该问题已成功记录到待解答问题库，请告知用户工程师将后续补充此知识。"
-        
-    # 构造记录数据
-    record = {
-        "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "query": user_query,
-        "reason": reason,
-        "status": "pending" # pending=待人工处理, solved=已入库
-    }
-
-    # 读取旧数据并追加
-    data = []
-    if os.path.exists(UNANSWERED_FILE):
-        try:
-            with open(UNANSWERED_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-        except:
-            data = []
-    
-    data.append(record)
-
-    # 写入文件
-    with open(UNANSWERED_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-    return "该问题已成功记录到待解答问题库，请告知用户工程师将后续补充此知识。"
-
 # 工具列表
-tools = [search_factory_knowledge, record_missing_knowledge]
+tools = [search_factory_knowledge]
 
 # ==============================================================================
 # 多模态处理核心函数
@@ -313,66 +263,35 @@ llm = ChatOpenAI(
 
 system_prompt = SystemMessage(content="""
     ### 角色定义
-    你是一个严谨专业的工厂智能助手。你将面对以下三种场景，需要执行不同的任务：
-    
-    **场景1：**用户没有上传文件或图片，且询问工厂设备、操作规程等业务问题
-    - 当用户提问故障处理或操作问题时，你需要调用`search_factory_knowledge` 工具查询知识库，根据知识库的内容来回答用户问题。当发现检索内容不足以回答问题时，**必须立即**调用 `record_missing_knowledge`记录问题到【待解答问题库】，绝对不要犹豫或尝试自我纠正。
-    
-    **场景2：**用户上传了文件或图片
-    - 如果用户在提问时**上传了文件或图片**，需要先仔细理解用户的问题，再调用`search_factory_knowledge` 工具查询知识库
-      - 如果查询到的内容与用户上传的内容和用户的问题高度相关，则需要根据用户上传的文件或图片，结合知识库中的内容回答用户的问题
-      - 如果查询到的内容与用户上传的内容和用户的问题无关，则直接根据用户上传的文件或图片进行作答，**不需要**调用记录工具记录到【待解答问题库】
-    
-    **场景3：**用户提出代码调试、代码报错类问题（如“Python脚本报错怎么解决”、“这段代码怎么优化”等）
-    - 第一步：先调用 `search_factory_knowledge` 查询知识库，看看是否有针对本工厂特定系统的报错记录或解决方案。
-    - 第二步：如果查询结果能解决该报错，则直接结合知识库内容回答。
-    - 第三步：如果未在知识库中找到相关内容，**请直接发挥你作为代码专家的能力，运用你自身的编程知识**，仔细分析用户的代码报错或需求，给出导致错误的原因，并提供修复后的完整代码和原理解释。
-    - 【注意】：此代码场景下查不到资料时，**绝对不要**调用 record_missing_knowledge 工具，直接输出你的代码调试结果即可。
-                              
-    ### 场景1 详细工作流 (必须严格执行以下步骤)
-    **第1步：提取关键实体**
-    - 分析用户问题，提取核心设备/系统名称（例如：“自动分拣系统”、“FANUC机器人”、“传送带”）。
-    - 记住这个核心实体，它是本次回答的“主语”。
+    你是一个严谨专业的智能分拣平台助手。你的核心任务是根据知识库的内容，指导用户操作“智能分拣平台”以及介绍公司的相关产品。
+    当用户提出问题时，你必须调用 `search_factory_knowledge` 工具查询知识库，并严格基于检索到的知识库内容来回答问题。
 
-    **第2步：查询并审查 (关键一步)**
-    - 调用 `search_factory_knowledge` 查询知识库。
-    - **审查查询结果的主语**：
-      - 仔细阅读查询到的每一段文字，寻找其中提到的设备名称。
-      - **匹配检查示例**：
-        - 用户问：“自动分拣系统” -> 查询内容：“机器人手动操作...” -> **不匹配！** (这是张冠李戴)
-        - 用户问：“自动分拣系统” -> 查询内容：“分拣单元操作...” -> **匹配。**
-        - 用户问：“自动分拣系统” -> 查询内容完全没提设备名，只说“按下红色按钮” -> **高风险！** 除非你能从上下文（如文件名）确信这是分拣系统，否则视为不匹配。
-    - **审查图片内容 (视觉能力)**：
-      - 你会看到穿插在文字中的图片。
-      - **请仔细看图**：判断图片内容是“设备操作示意图/电路图/实物图”还是“无意义的Logo/页眉”。
-      - **决策**：只有当图片能辅助说明操作步骤时，才保留它；如果是无关图片，请直接忽略，不要输出。
-                              
-    **第3步：决策与行动**
-    - **情况 A (主语匹配 且 内容相关)**：
-      - 对查询的结果进行整合或提取，清晰准确地回答用户。
-      - **图文混排规则**：
-        - 你的回答必须图文并茂。
-        - 引用图片时，请使用 Markdown 格式：`![示意图](图片链接)`。
-        - **注意**：只能使用系统提示中给出的 `http://localhost...` 链接，**绝对不要**输出 Base64 编码。
-    - **情况 B (主语不匹配 或 查询工具返回“未在知识库中找到相关内容” 或 返回的内容与用户问题的关联性很低，不足以支撑你回答用户的问题)**：
-      - **绝对禁止**强行拼凑答案。例如：不要把机器人的操作安在分拣系统头上。
-      - **必须**调用 `record_missing_knowledge` 工具，将问题记录到待解答库。
-      - 礼貌回复用户：“抱歉，当前知识库中暂未收录此问题。但我已将其自动记录到【待解答问题库】，工程师将在后续更新中补充该内容。”
-                              
+   ### 详细工作流
+    **第1步：查询知识库**
+    - 分析用户问题，提取关键词，并调用 `search_factory_knowledge` 工具进行查询。
+
+    **第2步：回答问题**
+    - **情况 A (查询内容足以回答问题)**：
+      - 对查询结果进行清晰地整合与提取，直接回答用户。
+      - 回答需图文并茂。如果查询结果中包含相关的图片链接，请使用 Markdown 格式：`![示意图](图片链接)`，且图片必须紧跟在它所解释的段落或步骤之后。
+      - **注意**：只能使用系统提示中给出的 `http://localhost...` 链接，**绝对不要**输出 Base64 编码。
+    - **情况 B (未查到内容 或 内容不足以回答问题)**：
+      - 严禁强行拼凑答案或使用自身预训练知识。
+      - 请直接输出：“抱歉，该问题我暂时无法回答”。
+
     ### 注意事项
-    1. **完整性**：你输出的内容务必能够**完整**地契合用户的问题，例如用户提问“自动分拣系统的手动操作流程”，查询工具返回的内容只包含“手动操作流程”，但缺少“自动分拣系统”这个关键词，也要视为无法回答用户问题，需要将该问题存入待解答问题库。
-    2. **图文对应**：如果查询工具返回内容中的某一步骤有图，你在回答该步骤时就必须带上那张图。不要遗漏。图片应该紧跟在它所解释的步骤文字之后。
-    3. **严禁编造**：不允许在查询工具返回的内容上增加无中生有的内容，你只能对查询的结果进行整合或提取，然后清晰地回答用户，**严禁编造**。
-    4. **确定性**：如果用户的问题不清晰（例如只说了“机器坏了”），请追问具体的错误码或故障现象等问题的细节，不要瞎猜。
-                              
+    1. **严禁编造**：不允许在查询工具返回的内容上增加无中生有的内容。你只能忠实于知识库提供内容。
+    2. **完整性与图文对应**：确保输出步骤的完整性；知识库步骤中配有的图片，回答时坚决不能遗漏。
+    3. **确定性**：如果用户的问题不清晰（例如只说了“怎么操作”或“介绍下产品”），请追问具体的操作界面名称或产品型号，不要盲目罗列。
+
     ### 工具调用格式规范
     **你必须使用标准的 OpenAI Function Calling 格式。**
     **严禁**输出 `<tool_call>`, `<function>` 等 XML 标签。
     **严禁**输出 Base64 编码。
-                              
+    【严格限制】在输出内容时，如果提供的知识库检索结果中没有包含具体的图片 URL 链接，**严禁**自己捏造、猜测或生成任何 Markdown 格式的图片链接（如 ![图](url)）。
+
     ### 回答格式
-    - 使用清晰的 Markdown 格式。
-    - 在回答末尾列出【参考来源文件】。
+    - 使用清晰易读的 Markdown 格式（如使用加粗、列表缩进等）。
     """)
 
 # 定义状态
@@ -382,30 +301,20 @@ class AgentState(TypedDict):
 # 定义节点：调用模型
 async def call_model(state: AgentState):
     messages = state["messages"]
-    last_message = messages[-1]
-
-    # 1. [记录工具防死循环拦截] 保持不变
-    if isinstance(last_message, ToolMessage) and "该问题已成功记录到待解答问题库" in str(last_message.content):
-        print("🛑 [系统拦截] 检测到刚刚执行了记录工具，强制结束对话循环。")
-        return {
-            "messages": [
-                AIMessage(content="抱歉，当前知识库中暂未收录此问题。我已将其自动记录到【待解答问题库】，工程师将在后续更新中补充该内容。")
-            ]
-        }
 
     print("🤖 [Agent 动作] 正在思考 (调用大模型)...")
     
-    # 2. 确保 SystemPrompt 在最前
+    # 1. 确保 SystemPrompt 在最前
     if not isinstance(messages[0], SystemMessage):
         messages = [system_prompt] + messages
     else:
         messages[0] = system_prompt
 
-    # 3. 执行中间件：处理图片 Base64
+    # 2. 执行中间件：处理图片 Base64
     messages_with_images = convert_to_multimodal_messages(messages)
     
     # ==================== [智能检测搜索次数] ====================
-    search_count = 0  # 改为计数器
+    search_count = 0  # 计数器
     
     # 倒序遍历消息，只检查“当前用户提问之后”产生的动作
     for i in range(len(messages) - 1, -1, -1):
@@ -420,14 +329,13 @@ async def call_model(state: AgentState):
             for tc in msg.tool_calls:
                 if tc["name"] == "search_factory_knowledge":
                     search_count += 1
-                    # 注意：这里去掉了 break，以便统计本轮所有的搜索次数
     
     print(f"🔍 [系统检测] 本轮对话已搜索次数: {search_count}")
 
     # 动态构建工具列表
     current_tools = list(tools)
     
-    # 修改判断条件：只有当搜索次数达到 3 次时，才移除搜索工具
+    # 只有当搜索次数达到 3 次时，才移除搜索工具
     if search_count >= 3:
         print(f"🛑 [系统强制] 检测到**本轮对话**已搜索 {search_count} 次（达到上限），正在移除搜索工具...")
         current_tools = [t for t in tools if t.name != "search_factory_knowledge"]
@@ -437,6 +345,17 @@ async def call_model(state: AgentState):
     
     try:
         response = await model_with_tools.ainvoke(messages_with_images)
+
+        # ==================== [原生 Tool Call 强制拦截] ====================
+        # 如果模型靠记忆输出了原生的 tool_calls，我们直接切断它的工具调用，强制返回兜底文本
+        if search_count >= 3 and hasattr(response, "tool_calls") and response.tool_calls:
+            for tc in response.tool_calls:
+                if tc.get("name") == "search_factory_knowledge":
+                    print(f"🛡️ [底层拦截] Qwen无视限制强行生成了搜索调用，系统强制阻断并结束对话...")
+                    response.tool_calls = []
+                    response.content = "抱歉，该问题我暂时无法回答"
+                    return {"messages": [response]}
+        # ====================================================================
         
         # ==================== [XML 强力修复补丁] ====================
         content_str = str(response.content)
@@ -451,22 +370,10 @@ async def call_model(state: AgentState):
                 func_name = func_match.group(1) or func_match.group(2)
                 
                 # --- [防死循环拦截器]  ---
-                # 如果搜索次数已达上限 (>=3)，但模型还想搜，强制转为记录
                 if search_count >= 3 and func_name == "search_factory_knowledge":
-                    print(f"🛡️ [拦截成功] 模型试图第 {search_count + 1} 次搜索，系统强制转换为‘记录缺失知识’...")
-                    func_name = "record_missing_knowledge"
-                    q_match = re.search(r"<parameter=query>(.*?)</parameter>", content_str, re.DOTALL)
-                    query_val = q_match.group(1).strip() if q_match else "用户遇到的未知问题"
-                    
-                    response.tool_calls = [{
-                        "name": func_name,
-                        "args": {
-                            "user_query": query_val,
-                            "reason": "自动拦截：多次检索（3次）无果，强制转入待解答库"
-                        },
-                        "id": f"call_{uuid.uuid4().hex[:8]}"
-                    }]
-                    response.content = ""
+                    print(f"🛡️ [拦截成功] 模型试图第 {search_count + 1} 次搜索，系统强制终止...")
+                    response.tool_calls = []
+                    response.content = "抱歉，该问题我暂时无法回答"
                     return {"messages": [response]}
                 # -----------------------
 
@@ -474,13 +381,6 @@ async def call_model(state: AgentState):
                 if func_name == "search_factory_knowledge":
                     q_match = re.search(r"<parameter=query>(.*?)</parameter>", content_str, re.DOTALL)
                     if q_match: args["query"] = q_match.group(1).strip()
-                        
-                elif func_name == "record_missing_knowledge":
-                    uq_match = re.search(r"<parameter=user_query>(.*?)</parameter>", content_str, re.DOTALL)
-                    if uq_match: args["user_query"] = uq_match.group(1).strip()
-                    r_match = re.search(r"<parameter=reason>(.*?)</parameter>", content_str, re.DOTALL)
-                    if r_match: args["reason"] = r_match.group(1).strip()
-                    else: args["reason"] = "未检索到相关文档"
                 
                 if args:
                     print(f"🔧 [修复成功] 提取到工具: {func_name}, 参数: {args}")
@@ -491,10 +391,53 @@ async def call_model(state: AgentState):
                     }]
                     response.content = "" 
             
+            # 清理残留的 XML 标签
             if "<tool_call>" in str(response.content):
                 clean_content = re.sub(r"<tool_call>.*?</tool_call>", "", str(response.content), flags=re.DOTALL)
                 response.content = clean_content.strip()
+         # ==================== [视频预览卡片注入] ====================
+        # 当模型没有调用工具，说明这是发给用户的最终回答
+        if not response.tool_calls:
+            try:
+                video_titles = set()
+                # 倒序遍历本轮的对话，寻找工具返回的知识库文本
+                for msg in reversed(messages):
+                    if isinstance(msg, HumanMessage):
+                        break  # 只看本轮的
+                    if getattr(msg, 'type', '') == 'tool':
+                        # 从检索内容中提取《视频名字》
+                        import re
+                        matches = re.findall(r'来源视频：《(.*?)》', str(msg.content))
+                        for m in matches:
+                            video_titles.add(m)
+                
+                if video_titles:
+                    videos = load_metadata()
+                    video_blocks = []
+                    for title in video_titles:
+                        # 在视频元数据中寻找匹配的视频
+                        matched_video = next((v for v in videos if v.get("title") == title), None)
+                        if matched_video:
+                            # 剔除不需要的过大字段（如果有的话），转为 JSON
+                            video_info = {
+                                "id": matched_video.get("id"),
+                                "title": matched_video.get("title"),
+                                "url": matched_video.get("url"),
+                                "thumbnail": matched_video.get("thumbnail"),
+                                "duration": matched_video.get("duration")
+                            }
+                            video_json = json.dumps(video_info, ensure_ascii=False)
+                            # 生成前端专属的解析标签
+                            video_blocks.append(f"<video_preview>{video_json}</video_preview>")
+                    
+                    if video_blocks:
+                        # 把标签无缝拼接到大模型原回答的末尾
+                        appendix = "\n\n---\n**🎬 参考操作演示视频：**\n" + "\n".join(video_blocks)
+                        response.content = str(response.content) + appendix
 
+            except Exception as e:
+                print(f"⚠️ [增强失败] 视频链接注入出错: {e}")
+        # ==========================================================
         print("✅ [Agent 动作] 大模型思考完成")
         return {"messages": [response]}
         

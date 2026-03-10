@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import {
     Send, Plus, MessageSquare, User, Bot, Loader2, StopCircle,
-    Mic, ArrowLeft, GraduationCap, Trash2, Wrench, AlertTriangle, Paperclip, X
+    Mic, ArrowLeft, GraduationCap, Trash2, Menu, Paperclip, X, LayoutDashboard, Package, Play, Video
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { API_BASE_URL } from "./config";
@@ -10,6 +10,79 @@ import remarkGfm from 'remark-gfm';
 
 const API_URL = `${API_BASE_URL}/chat`;
 const VOICE_API_URL = `${API_BASE_URL}/voice`;
+function ChatMiniVideoCard({ video, onPlay }) {
+    return (
+        <div
+            onClick={onPlay}
+            className="mt-3 w-64 bg-white border border-blue-100 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all cursor-pointer group"
+        >
+            <div className="relative aspect-video bg-slate-100">
+                {video.thumbnail ? (
+                    <img src={video.thumbnail} alt={video.title} className="w-full h-full object-cover" />
+                ) : (
+                    <div className="flex items-center justify-center w-full h-full">
+                        <Video className="text-gray-300" size={32} />
+                    </div>
+                )}
+                {/* 悬停播放遮罩 */}
+                <div className="absolute inset-0 bg-black/10 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+                    <div className="w-12 h-12 bg-white/90 rounded-full flex items-center justify-center text-blue-600 shadow-lg group-hover:scale-110 transition-transform">
+                        <Play size={24} className="ml-1" fill="currentColor" />
+                    </div>
+                </div>
+            </div>
+            <div className="p-3">
+                <p className="text-sm font-semibold text-gray-800 truncate">{video.title}</p>
+                <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                    <Play size={12} /> 点击播放
+                </p>
+            </div>
+        </div>
+    );
+}
+// 🎬 视频播放模态框组件
+const VideoPlayerModal = ({ video, onClose }) => {
+    if (!video) return null;
+
+    return (
+        <div
+            className="fixed inset-0 z-[999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 transition-opacity"
+            onClick={onClose} // 点击黑色背景时关闭
+        >
+            <div
+                className="relative w-full max-w-4xl bg-black rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+                onClick={(e) => e.stopPropagation()} // 防止点击视频本身时触发关闭
+            >
+                {/* 顶部悬浮栏：标题 + 关闭按钮 */}
+                <div className="absolute top-0 left-0 right-0 z-10 flex justify-between items-center p-4 bg-gradient-to-b from-black/80 to-transparent">
+                    <h3 className="text-white font-medium text-sm md:text-base truncate pr-8">
+                        {video.title || '视频演示'}
+                    </h3>
+                    <button
+                        onClick={onClose}
+                        className="text-white/80 hover:text-white bg-black/40 hover:bg-black/60 rounded-full p-1.5 transition-all"
+                        title="关闭"
+                    >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+
+                {/* 核心视频播放器 */}
+                <video
+                    src={video.url}
+                    controls
+                    autoPlay
+                    className="w-full h-auto max-h-[85vh] outline-none"
+                    poster={video.thumbnail}
+                >
+                    您的浏览器不支持 HTML5 视频播放。
+                </video>
+            </div>
+        </div>
+    );
+};
 // 接收 onBack 属性用于返回主页
 export default function TrainingAssistant({ onBack, userId }) {
     const [threads, setThreads] = useState([]);
@@ -17,6 +90,7 @@ export default function TrainingAssistant({ onBack, userId }) {
     const [messages, setMessages] = useState([]);
     const [input, setInput] = useState("");
     const [isLoading, setIsLoading] = useState(false);
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
     // 打字机状态
     const [streamBuffer, setStreamBuffer] = useState("");
@@ -33,6 +107,104 @@ export default function TrainingAssistant({ onBack, userId }) {
     const abortControllerRef = useRef(null);
     // 存储临时文件解析后的内容
     const [attachedFiles, setAttachedFiles] = useState([]);
+    const [playingVideo, setPlayingVideo] = useState(null);
+
+    // 内容解析器
+    const renderMessageContent = (text, role) => {
+        if (!text) return null;
+
+        // 匹配包含换行符的视频标签
+        const parts = text.split(/(<video_preview>[\s\S]*?<\/video_preview>)/g);
+
+        return parts.map((part, index) => {
+            // --- 1. 完整视频卡片 ---
+            if (part.trim().startsWith('<video_preview>')) {
+                const jsonStr = part.replace('<video_preview>', '').replace('</video_preview>', '');
+                try {
+                    const videoObj = JSON.parse(jsonStr);
+
+                    // 修复路径
+                    if (videoObj.url && videoObj.url.startsWith('/')) {
+                        videoObj.url = `${API_BASE_URL}${videoObj.url}`;
+                    }
+                    if (videoObj.thumbnail && videoObj.thumbnail.startsWith('/')) {
+                        videoObj.thumbnail = `${API_BASE_URL}${videoObj.thumbnail}`;
+                    }
+
+                    return (
+                        <div key={`video-${index}`} className="my-4">
+                            <ChatMiniVideoCard
+                                video={videoObj}
+                                onPlay={() => setPlayingVideo(videoObj)}
+                            />
+                        </div>
+                    );
+                } catch (e) {
+                    console.error("解析视频数据失败:", e);
+                    return <div key={`err-${index}`} className="text-red-500 text-xs border border-red-200 p-2 rounded">视频解析失败: {jsonStr}</div>;
+                }
+            }
+
+            // --- 2. 视频流式加载中 ---
+            if (part.includes('<video_preview>') && !part.includes('</video_preview>')) {
+                return (
+                    <span key={`loading-${index}`} className="inline-flex items-center text-blue-500 text-xs animate-pulse ml-2">
+                        <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                        正在生成视频组件...
+                    </span>
+                );
+            }
+
+            // --- 3. Markdown 普通文本 ---
+            if (!part) return null;
+
+            return (
+                <ReactMarkdown
+                    key={`md-${index}`}
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                        img: ({ node, ...props }) => {
+                            let imgSrc = props.src;
+                            if (imgSrc) {
+                                // 🛠️ 修复 8080 端口拒绝连接：正则匹配任意 localhost 端口并替换
+                                imgSrc = imgSrc.replace(/http:\/\/localhost:\d+/g, API_BASE_URL);
+                                if (imgSrc.startsWith('/images')) {
+                                    imgSrc = `${API_BASE_URL}${imgSrc}`;
+                                }
+                            }
+                            return <img {...props} src={imgSrc} className="max-w-full h-auto rounded-lg shadow-md my-4 border border-gray-200 cursor-zoom-in hover:shadow-lg transition-shadow" onClick={() => window.open(imgSrc, '_blank')} />
+                        },
+                        code({ node, className, children, ...props }) {
+                            // 🛠️ 修复 DOM 嵌套报错：摒弃 inline，改用 className 匹配 language-xxx 来判断是不是代码块
+                            const match = /language-(\w+)/.exec(className || '');
+                            return match ? (
+                                <div className="bg-gray-800 text-gray-100 p-2 rounded-md my-2 overflow-x-auto">
+                                    <code className={className} {...props}>{children}</code>
+                                </div>
+                            ) : (
+                                <code className={`${role === 'user' ? 'bg-blue-700' : 'bg-gray-100 text-red-500'} px-1 rounded`} {...props}>
+                                    {children}
+                                </code>
+                            );
+                        },
+                        table: ({ node, ...props }) => <div className="overflow-x-auto my-2 rounded-lg border border-gray-200"><table className="min-w-full divide-y divide-gray-200 text-sm" {...props} /></div>,
+                        thead: ({ node, ...props }) => <thead className="bg-blue-50" {...props} />,
+                        tbody: ({ node, ...props }) => <tbody className="bg-white divide-y divide-gray-200" {...props} />,
+                        tr: ({ node, ...props }) => <tr className="hover:bg-gray-50 transition-colors" {...props} />,
+                        th: ({ node, ...props }) => <th className="px-4 py-3 text-left text-xs font-medium text-blue-800 uppercase tracking-wider font-bold" {...props} />,
+                        td: ({ node, ...props }) => <td className="px-4 py-2 whitespace-nowrap text-gray-700" {...props} />,
+                        p: ({ node, ...props }) => <p className="mb-2 last:mb-0" {...props} />,
+                        a: ({ node, ...props }) => <a className="text-blue-600 hover:underline" target="_blank" {...props} />,
+                        ul: ({ node, ...props }) => <ul className="list-disc list-inside mb-2" {...props} />,
+                        ol: ({ node, ...props }) => <ol className="list-decimal list-inside mb-2" {...props} />,
+                        li: ({ node, ...props }) => <li className="mb-1" {...props} />,
+                    }}
+                >
+                    {part}
+                </ReactMarkdown>
+            );
+        });
+    };
 
     // -----------------------------------------------------------------------
     // 1. 获取历史会话列表的函数
@@ -452,77 +624,79 @@ export default function TrainingAssistant({ onBack, userId }) {
 
     return (
         <div className="flex h-screen bg-gray-50 text-gray-800 font-sans animate-fade-in">
-            {/* 侧边栏 */}
-            <div className="w-64 bg-gray-900 text-white flex flex-col flex-shrink-0 shadow-xl z-20">
-                {/* 顶部返回区域 */}
-                <div className="p-4 border-b border-gray-800 flex items-center gap-3">
-                    <button onClick={onBack} className="p-2 hover:bg-gray-800 rounded-lg text-gray-400 hover:text-white transition-colors">
-                        <ArrowLeft size={20} />
-                    </button>
-                    <h1 className="font-bold text-lg flex items-center gap-2">
-                        <GraduationCap className="text-blue-500" size={24} />
-                        培训助手
-                    </h1>
-                </div>
+            {/* 1. 侧边栏 */}
+            <div className={`transition-all duration-300 ease-in-out bg-gray-900 text-white flex flex-col flex-shrink-0 shadow-xl z-20 overflow-hidden ${isSidebarOpen ? 'w-1/4' : 'w-0'}`}>
+                <div className="w-[25vw] flex flex-col h-full">
+                    {/* 顶部标题区域 */}
+                    <div className="p-4 border-b border-gray-800 flex items-center justify-between">
+                        <h1 className="font-bold text-lg flex items-center gap-2">
+                            <MessageSquare className="text-blue-500" size={20} />
+                            历史会话
+                        </h1>
+                    </div>
 
-                <div className="p-4">
-                    <button
-                        onClick={() => createNewThread("新会话")}
-                        disabled={isLoading}
-                        className="w-full flex items-center gap-2 bg-blue-600 hover:bg-blue-700 p-3 rounded-lg text-sm transition-all shadow-md group"
-                    >
-                        <Plus size={16} className="group-hover:rotate-90 transition-transform" /> 新建会话
-                    </button>
-                </div>
-
-                <div className="flex-1 overflow-y-auto px-2 custom-scrollbar">
-                    {threads.map(thread => (
+                    <div className="p-4">
                         <button
-                            key={thread.id}
-                            onClick={() => switchThread(thread.id)}
+                            onClick={() => createNewThread("新会话")}
                             disabled={isLoading}
-                            // 在 className 中添加了 'group'，这是为了让里面的 group-hover 生效
-                            className={`
-                group w-full text-left p-3 rounded-lg mb-1 text-sm flex items-center gap-2 transition-colors 
-                ${activeThreadId === thread.id
+                            className="w-full flex items-center gap-2 bg-blue-600 hover:bg-blue-700 p-3 rounded-lg text-sm transition-all shadow-md group"
+                        >
+                            <Plus size={16} className="group-hover:rotate-90 transition-transform" /> 新建会话
+                        </button>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto px-2 custom-scrollbar">
+                        {threads.map(thread => (
+                            <button
+                                key={thread.id}
+                                onClick={() => switchThread(thread.id)}
+                                disabled={isLoading}
+                                className={`group w-full text-left p-3 rounded-lg mb-1 text-sm flex items-center gap-2 transition-colors ${activeThreadId === thread.id
                                     ? 'bg-gray-800 text-white border-l-2 border-blue-500'
                                     : 'text-gray-400 hover:bg-gray-800'
-                                }
-            `}
-                        >
-                            <MessageSquare size={14} className="flex-shrink-0" />
-
-                            {/* 添加了 'flex-1'。这会让文字撑满中间的空间，把后面的按钮推到最右边 */}
-                            <span className="truncate flex-1">{thread.title}</span>
-
-                            {/* 删除按钮 */}
-                            <div
-                                role="button"
-                                onClick={(e) => handleDeleteThread(e, thread.id)}
-                                className={`
-                    p-1.5 rounded-md text-slate-400 hover:text-red-400 hover:bg-gray-700 transition-all 
-                    opacity-0 group-hover:opacity-100 flex-shrink-0
-                    ${activeThreadId === thread.id ? 'opacity-100' : ''} 
-                `}
-                                title="删除会话"
+                                    }`}
                             >
-                                <Trash2 size={16} />
-                            </div>
-                        </button>
-                    ))}
+                                <MessageSquare size={14} className="flex-shrink-0" />
+                                <span className="truncate flex-1">{thread.title}</span>
+                                <div
+                                    role="button"
+                                    onClick={(e) => handleDeleteThread(e, thread.id)}
+                                    className={`p-1.5 rounded-md text-slate-400 hover:text-red-400 hover:bg-gray-700 transition-all opacity-0 group-hover:opacity-100 flex-shrink-0 ${activeThreadId === thread.id ? 'opacity-100' : ''}`}
+                                    title="删除会话"
+                                >
+                                    <Trash2 size={16} />
+                                </div>
+                            </button>
+                        ))}
+                    </div>
                 </div>
             </div>
 
-            {/* 主界面 */}
-            <div className="flex-1 flex flex-col relative bg-white">
-                <div className="h-14 border-b flex items-center px-6 shadow-sm z-10 bg-white/80 backdrop-blur-md justify-between">
-                    <h1 className="font-semibold text-gray-700 flex items-center gap-2">
-                        <GraduationCap className="text-blue-600" size={20} />
-                        <span>交互式操作培训</span>
-                    </h1>
+            {/* 2. 主界面 */}
+            <div className="flex-1 flex flex-col relative bg-white min-w-0">
+                {/* 顶部导航栏 */}
+                <div className="h-14 border-b flex items-center px-4 shadow-sm z-10 bg-white/80 backdrop-blur-md justify-between">
+                    <div className="flex items-center gap-2">
+                        {/* 将返回主页的按钮移到了这里，确保侧边栏关闭时也能返回 */}
+                        <button onClick={onBack} className="p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700 rounded-lg transition-colors" title="返回">
+                            <ArrowLeft size={20} />
+                        </button>
+
+                        {/* 控制侧边栏展开/收起的菜单按钮 */}
+                        <button
+                            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                            className={`p-2 rounded-lg transition-colors ${isSidebarOpen ? 'bg-blue-50 text-blue-600' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'}`}
+                            title={isSidebarOpen ? "收起历史记录" : "展开历史记录"}
+                        >
+                            <Menu size={20} />
+                        </button>
+                    </div>
+
                     <div className="text-xs text-gray-400 flex items-center gap-1">
-                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                        知识库已连接
+                        <h1 className="font-semibold text-gray-700 flex items-center gap-2 ml-2 border-l border-gray-200 pl-4">
+                            <GraduationCap className="text-blue-600" size={20} />
+                            <span>智能分拣助手</span>
+                        </h1>
                     </div>
                 </div>
 
@@ -534,34 +708,34 @@ export default function TrainingAssistant({ onBack, userId }) {
                                 <div className="w-20 h-20 bg-blue-50 rounded-2xl shadow-sm border border-blue-100 flex items-center justify-center mb-6">
                                     <Bot size={40} className="text-blue-600" />
                                 </div>
-                                <h2 className="text-2xl font-bold text-gray-800 mb-3">开启您的操作培训</h2>
+                                <h2 className="text-2xl font-bold text-gray-800 mb-3">开启您的操作指引</h2>
                                 <p className="text-gray-500 mb-10 max-w-md">
-                                    您可以询问具体的设备操作步骤，我会通过图文并茂的方式指导您完成任务。
+                                    您可以询问智能分拣平台的操作步骤或了解我们的产品。
                                 </p>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-3xl px-4 font-sans">
                                     <button
-                                        onClick={() => handleSend("教我使用自动分拣系统的桁架机械手的主控界面")}
+                                        onClick={() => handleSend("教我使用智能分拣平台的操作界面")}
                                         className="flex items-center gap-3 p-4 bg-white border border-gray-200 rounded-xl hover:border-blue-400 hover:shadow-md transition-all text-left group"
                                     >
                                         <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors">
-                                            <Wrench size={20} className="text-blue-600" />
+                                            <LayoutDashboard size={20} className="text-blue-600" />
                                         </div>
                                         <div>
-                                            <div className="font-semibold text-gray-700 group-hover:text-blue-700">设备操作培训</div>
-                                            <div className="text-xs text-gray-400">例：教我使用自动分拣系统的桁架机械手主控界面</div>
+                                            <div className="font-semibold text-gray-700 group-hover:text-blue-700">操作指导</div>
+                                            <div className="text-xs text-gray-400">例：教我使用智能分拣平台的操作界面</div>
                                         </div>
                                     </button>
 
                                     <button
-                                        onClick={() => handleSend("自动分拣系统的设备作业工艺流程是什么？")}
+                                        onClick={() => handleSend("介绍一下公司的主要产品")}
                                         className="flex items-center gap-3 p-4 bg-white border border-gray-200 rounded-xl hover:border-blue-400 hover:shadow-md transition-all text-left group"
                                     >
                                         <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors">
-                                            <AlertTriangle size={20} className="text-blue-600" />
+                                            <Package size={20} className="text-blue-600" />
                                         </div>
                                         <div>
-                                            <div className="font-semibold text-gray-700 group-hover:text-blue-700">操作规范查询</div>
-                                            <div className="text-xs text-gray-400">例：自动分拣系统的设备作业工艺流程是什么？</div>
+                                            <div className="font-semibold text-gray-700 group-hover:text-blue-700">产品介绍</div>
+                                            <div className="text-xs text-gray-400">例：介绍一下公司的主要产品</div>
                                         </div>
                                     </button>
                                 </div>
@@ -722,78 +896,12 @@ export default function TrainingAssistant({ onBack, userId }) {
                                                     <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
                                                     <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
                                                     <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce"></div>
-                                                    <span className="text-xs text-gray-400 ml-2">正在查阅知识库...</span>
+                                                    <span className="text-xs text-gray-400 ml-2">正在思考</span>
                                                 </div>
                                             ) : (
                                                 /* 添加一个 div 包裹 ReactMarkdown，并将 className 放在这里 */
                                                 <div className={`prose prose-sm max-w-none ${msg.role === 'user' ? 'prose-invert' : ''}`}>
-                                                    <ReactMarkdown
-                                                        remarkPlugins={[remarkGfm]}
-                                                        components={{
-                                                            img: ({ node, ...props }) => {
-                                                                // --- 🛠️ 图片地址修复逻辑 ---
-                                                                let imgSrc = props.src;
-                                                                if (imgSrc) {
-                                                                    if (imgSrc.includes('localhost:8000')) {
-                                                                        imgSrc = imgSrc.replace('http://localhost:8000', API_BASE_URL);
-                                                                    } else if (imgSrc.startsWith('/images')) {
-                                                                        imgSrc = `${API_BASE_URL}${imgSrc}`;
-                                                                    }
-                                                                }
-                                                                // --- 🛠️ 逻辑结束 ---
-
-                                                                return (
-                                                                    <img
-                                                                        {...props}
-                                                                        src={imgSrc}
-                                                                        className="max-w-full h-auto rounded-lg shadow-md my-4 border border-gray-200 cursor-zoom-in hover:shadow-lg transition-shadow"
-                                                                        onClick={() => window.open(imgSrc, '_blank')}
-                                                                    />
-                                                                );
-                                                            },
-                                                            // 修复：代码块样式优化，避免溢出
-                                                            code({ node, inline, className, children, ...props }) {
-                                                                return !inline ? (
-                                                                    <div className="bg-gray-800 text-gray-100 p-2 rounded-md my-2 overflow-x-auto">
-                                                                        <code {...props}>{children}</code>
-                                                                    </div>
-                                                                ) : (
-                                                                    <code className={`${msg.role === 'user' ? 'bg-blue-700' : 'bg-gray-100 text-red-500'} px-1 rounded`} {...props}>
-                                                                        {children}
-                                                                    </code>
-                                                                )
-                                                            },
-                                                            // --- 自定义表格样式 ---
-                                                            table: ({ node, ...props }) => (
-                                                                <div className="overflow-x-auto my-2 rounded-lg border border-gray-200">
-                                                                    <table className="min-w-full divide-y divide-gray-200 text-sm" {...props} />
-                                                                </div>
-                                                            ),
-                                                            thead: ({ node, ...props }) => (
-                                                                <thead className="bg-blue-50" {...props} /> // 表头用淡蓝色背景
-                                                            ),
-                                                            tbody: ({ node, ...props }) => (
-                                                                <tbody className="bg-white divide-y divide-gray-200" {...props} />
-                                                            ),
-                                                            tr: ({ node, ...props }) => (
-                                                                <tr className="hover:bg-gray-50 transition-colors" {...props} />
-                                                            ),
-                                                            th: ({ node, ...props }) => (
-                                                                <th className="px-4 py-3 text-left text-xs font-medium text-blue-800 uppercase tracking-wider font-bold" {...props} />
-                                                            ),
-                                                            td: ({ node, ...props }) => (
-                                                                <td className="px-4 py-2 whitespace-nowrap text-gray-700" {...props} />
-                                                            ),
-                                                            // --- 优化其他元素样式 ---
-                                                            p: ({ node, ...props }) => <p className="mb-2 last:mb-0" {...props} />,
-                                                            a: ({ node, ...props }) => <a className="text-blue-600 hover:underline" target="_blank" {...props} />,
-                                                            ul: ({ node, ...props }) => <ul className="list-disc list-inside mb-2" {...props} />,
-                                                            ol: ({ node, ...props }) => <ol className="list-decimal list-inside mb-2" {...props} />,
-                                                            li: ({ node, ...props }) => <li className="mb-1" {...props} />,
-                                                        }}
-                                                    >
-                                                        {contentToShow}
-                                                    </ReactMarkdown>
+                                                    {renderMessageContent(contentToShow || msg.content, msg.role)}
                                                 </div>
                                             )}
                                         </div>
@@ -866,7 +974,7 @@ export default function TrainingAssistant({ onBack, userId }) {
                                 value={input}
                                 onChange={(e) => setInput(e.target.value)}
                                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                                placeholder={isRecording ? "正在听你说话..." : "输入您想学习的操作内容..."}
+                                placeholder={"询问智能分拣助手..."}
                                 className="w-full max-h-32 bg-transparent border-none focus:ring-0 resize-none p-3 text-gray-700 placeholder-gray-400 text-sm"
                                 rows={1}
                                 disabled={isLoading || isRecording || isProcessingVoice}
@@ -874,40 +982,6 @@ export default function TrainingAssistant({ onBack, userId }) {
 
                             {/* 按钮工具栏 */}
                             <div className="flex items-center mb-1 gap-1">
-                                {/* 隐藏的 input */}
-                                <input
-                                    type="file"
-                                    id="file-upload"
-                                    multiple
-                                    className="hidden"
-                                    onChange={handleFileUpload}
-                                    disabled={isLoading}
-                                    accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
-                                />
-                                <label
-                                    htmlFor="file-upload"
-                                    className={`p-2 rounded-lg transition-all mr-1 cursor-pointer flex items-center justify-center
-                                    ${isLoading
-                                            ? 'bg-gray-50 text-gray-300 cursor-not-allowed'
-                                            : 'bg-gray-100 text-gray-500 hover:bg-gray-200 active:scale-95'
-                                        }`}
-                                >
-                                    <Paperclip size={20} />
-                                </label>
-
-                                {/* 语音按钮 */}
-                                {isProcessingVoice ? (
-                                    <div className="p-2 mr-1"><Loader2 size={20} className="animate-spin text-blue-500" /></div>
-                                ) : (
-                                    <button
-                                        onClick={isRecording ? stopRecording : startRecording}
-                                        disabled={isLoading}
-                                        className={`p-2 rounded-lg transition-all mr-1 ${isRecording ? 'bg-red-100 text-red-600 animate-pulse' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
-                                    >
-                                        {isRecording ? <StopCircle size={20} /> : <Mic size={20} />}
-                                    </button>
-                                )}
-
                                 {/* 发送按钮 */}
                                 {isLoading ? (
                                     <button onClick={handleStop} className="p-2 rounded-lg bg-red-50 text-red-500 hover:bg-red-100"><StopCircle size={20} /></button>
@@ -925,6 +999,12 @@ export default function TrainingAssistant({ onBack, userId }) {
                     </div>
                 </div>
             </div>
+            {playingVideo && (
+                <VideoPlayerModal
+                    video={playingVideo}
+                    onClose={() => setPlayingVideo(null)}
+                />
+            )}
         </div >
     );
 }
