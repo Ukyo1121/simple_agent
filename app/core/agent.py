@@ -263,7 +263,7 @@ llm = ChatOpenAI(
 
 system_prompt = SystemMessage(content="""
     ### 角色定义
-    你是一个严谨专业的AI问答助手。你的核心任务是根据资料库的内容，指导用户操作“智能装配与互动拼图工作站”以及介绍华工科技公司的分拣、检测、焊接三个模块的产品。
+    你是一个严谨专业的AI问答助手，你的名字是“华工小筑——智能装配协同助手”。你的核心任务是根据资料库的内容，指导用户操作“智能装配与互动拼图工作站”以及介绍华工科技公司的分拣、检测、焊接三个模块的产品。
     当用户提出问题时，你必须调用 `search_factory_knowledge` 工具查询资料库，并严格基于检索到的资料内容来回答问题。
 
    ### 详细工作流
@@ -291,7 +291,8 @@ system_prompt = SystemMessage(content="""
 
     ### 严令禁止
     【严令禁止伪造图片链接】在输出内容时，如果提供的资料库检索结果中没有包含具体的图片 URL 链接，**严禁**自己捏造、猜测或生成任何 Markdown 格式的图片链接（如 ![图](url)）。
-    【严令禁止告知用户】如果当前资料库中未提供功能的示意图或操作界面截图，在你的回答中**严禁**提醒用户资料库中没提供图片，只需要输出资料库中已有的文字内容即可
+    【严令禁止告知用户资料库中没有图片】如果当前资料库中未提供功能的示意图或操作界面截图，在你的回答中**严禁**提醒用户资料库中没提供图片，只需要输出资料库中已有的文字内容即可
+    【严令禁止告知用户资料中未提供内容】你**不允许**输出类似下面的内容“注：当前资料中未提供【筑视分拣】的独立产品图示或更详细的技术参数。”，**不允许**告知用户资料中未提供什么内容
 
     ### 回答格式
     - 使用清晰易读的 Markdown 格式（如使用加粗、列表缩进等）。
@@ -398,30 +399,41 @@ async def call_model(state: AgentState):
             if "<tool_call>" in str(response.content):
                 clean_content = re.sub(r"<tool_call>.*?</tool_call>", "", str(response.content), flags=re.DOTALL)
                 response.content = clean_content.strip()
-         # ==================== [视频预览卡片注入] ====================
+        # ==================== [视频预览卡片注入] ====================
         # 当模型没有调用工具，说明这是发给用户的最终回答
         if not response.tool_calls:
             try:
+                print("==== 🎬 [Debug 视频注入] 启动 ====")
                 video_titles = set()
+                
                 # 倒序遍历本轮的对话，寻找工具返回的资料库文本
                 for msg in reversed(messages):
                     if isinstance(msg, HumanMessage):
+                        print("==== 🎬 [Debug 视频注入] 遇到用户提问，停止回溯 ====")
                         break  # 只看本轮的
-                    if getattr(msg, 'type', '') == 'tool':
-                        # 从检索内容中提取《视频名字》
+                    
+                    # 打印当前消息的类型，看有没有找错
+                    print(f"==== 🎬 [Debug 视频注入] 正在检查消息，类型: {getattr(msg, 'type', type(msg))} ====")
+                    
+                    # 更稳妥的判断方式：兼容属性和类名
+                    if getattr(msg, 'type', '') == 'tool' or msg.__class__.__name__ == 'ToolMessage':
                         import re
                         matches = re.findall(r'来源视频：《(.*?)》', str(msg.content))
+                        print(f"==== 🎬 [Debug 视频注入] 从 Tool 提取到的标题列表: {matches} ====")
                         for m in matches:
                             video_titles.add(m)
                 
+                print(f"==== 🎬 [Debug 视频注入] 去重后，准备去元数据寻找的标题: {video_titles} ====")
+                
                 if video_titles:
                     videos = load_metadata()
+                    print(f"==== 🎬 [Debug 视频注入] 成功读取元数据，共有 {len(videos) if videos else 0} 个视频 ====")
+                    
                     video_blocks = []
                     for title in video_titles:
-                        # 在视频元数据中寻找匹配的视频
                         matched_video = next((v for v in videos if v.get("title") == title), None)
                         if matched_video:
-                            # 剔除不需要的过大字段（如果有的话），转为 JSON
+                            print(f"==== 🎬 [Debug 视频注入] ✅ 成功匹配到视频: {title} ====")
                             video_info = {
                                 "id": matched_video.get("id"),
                                 "title": matched_video.get("title"),
@@ -430,13 +442,17 @@ async def call_model(state: AgentState):
                                 "duration": matched_video.get("duration")
                             }
                             video_json = json.dumps(video_info, ensure_ascii=False)
-                            # 生成前端专属的解析标签
                             video_blocks.append(f"<video_preview>{video_json}</video_preview>")
-                    
-                    if video_blocks:
-                        # 把标签无缝拼接到大模型原回答的末尾
-                        appendix = "\n\n---\n**🎬 参考操作演示视频：**\n" + "\n".join(video_blocks)
-                        response.content = str(response.content) + appendix
+                        else:
+                            # 如果执行到这里，说明是你 json 里的名字和文档里的名字没对上！
+                            print(f"==== 🎬 [Debug 视频注入] ❌ 警告：元数据中找不到 title 完全等于 '{title}' 的视频！====")
+                
+                if video_blocks:
+                    print("==== 🎬 [Debug 视频注入] 开始拼接到大模型回答末尾 ====")
+                    appendix = "\n\n---\n**🎬 产品介绍视频：**\n" + "\n".join(video_blocks)
+                    response.content = str(response.content) + appendix
+                else:
+                    print("==== 🎬 [Debug 视频注入] 注入跳过：最终没有生成任何视频模块。 ====")
 
             except Exception as e:
                 print(f"⚠️ [增强失败] 视频链接注入出错: {e}")

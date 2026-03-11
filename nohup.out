@@ -1,0 +1,49 @@
+INFO:     Started server process [262631]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+ERROR:    Traceback (most recent call last):
+  File "/data/suzhiling/miniconda3/envs/factory_agent/lib/python3.11/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/suzhiling/miniconda3/envs/factory_agent/lib/python3.11/asyncio/base_events.py", line 654, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+asyncio.exceptions.CancelledError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/data/suzhiling/miniconda3/envs/factory_agent/lib/python3.11/site-packages/uvicorn/_compat.py", line 30, in asyncio_run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/data/suzhiling/miniconda3/envs/factory_agent/lib/python3.11/asyncio/runners.py", line 123, in run
+    raise KeyboardInterrupt()
+KeyboardInterrupt
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/data/suzhiling/miniconda3/envs/factory_agent/lib/python3.11/site-packages/starlette/routing.py", line 701, in lifespan
+    await receive()
+  File "/data/suzhiling/miniconda3/envs/factory_agent/lib/python3.11/site-packages/uvicorn/lifespan/on.py", line 137, in receive
+    return await self.receive_queue.get()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/suzhiling/miniconda3/envs/factory_agent/lib/python3.11/asyncio/queues.py", line 158, in get
+    await getter
+  File "/data/suzhiling/miniconda3/envs/factory_agent/lib/python3.11/asyncio/futures.py", line 287, in __await__
+    yield self  # This tells Task to wait for completion.
+    ^^^^^^^^^^
+  File "/data/suzhiling/miniconda3/envs/factory_agent/lib/python3.11/asyncio/tasks.py", line 349, in __wakeup
+    future.result()
+  File "/data/suzhiling/miniconda3/envs/factory_agent/lib/python3.11/asyncio/futures.py", line 198, in result
+    raise exc
+asyncio.exceptions.CancelledError
+
+LLM is explicitly disabled. Using MockLLM.
+🤖 工厂智能Agent已启动！
+🚀 [System] 正在启动数据库连接池...
+🛠️ [Database] 正在检查并初始化表结构...
+✅ [Database] 表结构验证通过！
+👤 [System] 默认管理员已就绪: 用户名=admin, 密码=admin123
+✅ [System] 数据库连接池已就绪

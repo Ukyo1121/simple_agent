@@ -14,7 +14,7 @@ function ChatMiniVideoCard({ video, onPlay }) {
     return (
         <div
             onClick={onPlay}
-            className="mt-3 w-64 bg-white border border-blue-100 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all cursor-pointer group"
+            className="mt-3 w-102 bg-white border border-blue-100 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all cursor-pointer group"
         >
             <div className="relative aspect-video bg-slate-100 overflow-hidden">
                 {video.thumbnail ? (
@@ -48,7 +48,7 @@ const VideoPlayerModal = ({ video, onClose }) => {
             onClick={onClose}
         >
             <div
-                className="relative w-full max-w-4xl bg-black rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+                className="relative w-full max-w-6xl bg-black rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200"
                 onClick={(e) => e.stopPropagation()}
             >
                 <div className="absolute top-0 left-0 right-0 z-10 flex justify-between items-center p-4 bg-gradient-to-b from-black/80 to-transparent">
@@ -139,8 +139,8 @@ export default function TrainingAssistant({ onBack, userId }) {
                         thead: ({ node, ...props }) => <thead style={{ background: 'rgba(99,102,241,0.12)' }} {...props} />,
                         tbody: ({ node, ...props }) => <tbody {...props} />,
                         tr: ({ node, ...props }) => <tr style={{ borderBottom: '1px solid rgba(99,102,241,0.1)' }} {...props} />,
-                        th: ({ node, ...props }) => <th style={{ padding: '9px 13px', textAlign: 'left', color: '#a78bfa', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: 1 }} {...props} />,
-                        td: ({ node, ...props }) => <td style={{ padding: '9px 13px', color: 'rgba(210,215,255,0.8)' }} {...props} />,
+                        th: ({ node, ...props }) => <th style={{ padding: '9px 13px', textAlign: 'left', color: '#4f46e5', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: 1 }} {...props} />,
+                        td: ({ node, ...props }) => <td style={{ padding: '9px 13px', color: '#1e1b4b' }} {...props} />,
                         p: ({ node, ...props }) => <p className="mb-2.5 last:mb-0 leading-relaxed" {...props} />,
                         a: ({ node, ...props }) => <a className="text-indigo-400 hover:text-indigo-300 underline underline-offset-2" target="_blank" {...props} />,
                         ul: ({ node, ...props }) => <ul className="list-disc list-outside ml-5 mb-2.5 space-y-1" {...props} />,
@@ -772,9 +772,13 @@ export default function TrainingAssistant({ onBack, userId }) {
                                                         {/* 次按钮：公司核心产品（始终显示。如果上面的按钮隐藏了，它会自动占满全宽） */}
                                                         <button
                                                             onClick={() => {
-                                                                setMessages([]);
-                                                                setActiveThreadId(null);
+                                                                // 1. 调用现成的函数：向后端申请一个新会话，自动获取合法的 thread_id，并清空当前屏幕内容
+                                                                createNewThread();
+
+                                                                // 2. 展开产品模块卡片
                                                                 setShowProductCards(true);
+
+                                                                // 3. 关闭操作指导卡片
                                                                 setShowOperationCards(false);
                                                             }}
                                                             className="flex-1 w-full bg-white/50 hover:bg-white/80 backdrop-blur-md text-slate-700 border border-white/60 hover:border-violet-300 text-[13px] font-medium py-2.5 px-3 rounded-xl transition-all duration-300 shadow-sm hover:shadow hover:-translate-y-0.5 active:translate-y-0"

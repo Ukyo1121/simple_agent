@@ -1,13 +1,14 @@
 [
   {
-    "id": "6ec8497d-0d45-4ea4-ba5b-89df881b4cda",
-    "title": "智能分拣助手功能演示",
+    "id": "fd93e8db-2151-487d-8fa9-462338634f94",
+    "title": "筑视智能分拣系统",
     "description": null,
-    "filename": "6ec8497d-0d45-4ea4-ba5b-89df881b4cda.mp4",
-    "url": "/videos/6ec8497d-0d45-4ea4-ba5b-89df881b4cda.mp4",
-    "thumbnail": "/thumbnails/6ec8497d-0d45-4ea4-ba5b-89df881b4cda.jpg",
-    "size": 24418162,
-    "duration": 140.068,
-    "uploadedAt": "2026-02-03T10:27:03.832610"
+    "filename": "fd93e8db-2151-487d-8fa9-462338634f94.mp4",
+    "url": "/videos/fd93e8db-2151-487d-8fa9-462338634f94.mp4",
+    "thumbnail": "/thumbnails/fd93e8db-2151-487d-8fa9-462338634f94.jpg",
+    "size": 118730751,
+    "duration": 102.377,
+    "uploadedAt": "2026-03-11T11:47:11.144952",
+    "is_extracted": true
   }
 ]
