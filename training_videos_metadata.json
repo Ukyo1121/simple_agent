@@ -10,5 +10,29 @@
     "duration": 102.377,
     "uploadedAt": "2026-03-11T11:47:11.144952",
     "is_extracted": true
+  },
+  {
+    "id": "8d65bc35-11df-466d-b37c-3059686b7f85",
+    "title": "筑视智能焊接系统",
+    "description": null,
+    "filename": "8d65bc35-11df-466d-b37c-3059686b7f85.mp4",
+    "url": "/videos/8d65bc35-11df-466d-b37c-3059686b7f85.mp4",
+    "thumbnail": "/thumbnails/8d65bc35-11df-466d-b37c-3059686b7f85.jpg",
+    "size": 52152710,
+    "duration": 45.256,
+    "uploadedAt": "2026-03-12T19:52:24.558068",
+    "is_extracted": true
+  },
+  {
+    "id": "0a97034e-b546-4a59-b1af-a284b421a429",
+    "title": "筑视智能检测系统",
+    "description": null,
+    "filename": "0a97034e-b546-4a59-b1af-a284b421a429.mp4",
+    "url": "/videos/0a97034e-b546-4a59-b1af-a284b421a429.mp4",
+    "thumbnail": "/thumbnails/0a97034e-b546-4a59-b1af-a284b421a429.jpg",
+    "size": 21370508,
+    "duration": 134.828,
+    "uploadedAt": "2026-03-12T19:53:32.655688",
+    "is_extracted": true
   }
 ]

@@ -35,6 +35,7 @@ IMAGES_DIR = Path("./factory_images")
 COLLECT_IMAGES_DIR = Path("./collect_images")
 FILES_DIR = Path("./factory_files") 
 VIDEOS_DIR = Path("./training_videos")
+PDFS_DIR = Path("./factory_pdfs")
 if not os.path.exists(FILES_DIR):
     os.makedirs(FILES_DIR)
     
@@ -84,10 +85,10 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="智能分拣助手 API", version="2.0",lifespan=lifespan)
 
 app.mount("/files", StaticFiles(directory=UPLOAD_DIR), name="files")
-app.mount("/images", StaticFiles(directory=IMAGES_DIR), name="images")
+app.mount("/images", StaticFiles(directory=IMAGES_DIR,html=True), name="images")
 app.mount("/collect_images", StaticFiles(directory=COLLECT_IMAGES_DIR), name="collect_images")
 app.mount("/chatfiles", StaticFiles(directory=FILES_DIR), name="chatfiles")
-
+app.mount("/pdfs", StaticFiles(directory=PDFS_DIR), name="pdfs")
 app.mount("/videos", StaticFiles(directory=video_manager.VIDEOS_DIR), name="videos")
 app.mount("/thumbnails", StaticFiles(directory=video_manager.THUMBNAILS_DIR), name="thumbnails")
 app.add_middleware(

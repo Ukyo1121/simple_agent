@@ -1,5 +1,6 @@
 import os
 import sys
+import re
 import nest_asyncio
 nest_asyncio.apply()
 
@@ -81,7 +82,7 @@ Settings.llm = None
 # 配置 Reranker (核心竞争力: 重排序)
 reranker = FlagEmbeddingReranker(
     model="models/hub/models--BAAI--bge-reranker-base", 
-    top_n=15,
+    top_n=10,
     use_fp16=True  # 必须开启半精度，进一步省显存
 )
 
@@ -109,7 +110,7 @@ def search_factory_knowledge(query: str) -> str:
 
         # RAG Engine
         rag_engine = index.as_query_engine(
-            similarity_top_k=20,  # 粗排
+            similarity_top_k=15,  # 粗排
             node_postprocessors=[reranker], # 精排
             verbose=True,
             response_mode="no_text"
@@ -256,7 +257,7 @@ llm = ChatOpenAI(
     model="qwen3-vl-plus", 
     openai_api_key=os.getenv('DASHSCOPE_API_KEY'),
     openai_api_base="https://dashscope.aliyuncs.com/compatible-mode/v1",
-    temperature=0.1,
+    temperature=0,
     max_tokens=2048,
     model_kwargs={"stream": True} 
 )
@@ -266,23 +267,24 @@ system_prompt = SystemMessage(content="""
     你是一个严谨专业的AI问答助手，你的名字是“华工小筑——智能装配协同助手”。你的核心任务是根据资料库的内容，指导用户操作“智能装配与互动拼图工作站”以及介绍华工科技公司的分拣、检测、焊接三个模块的产品。
     当用户提出问题时，你必须调用 `search_factory_knowledge` 工具查询资料库，并严格基于检索到的资料内容来回答问题。
 
-   ### 详细工作流
+    ### 详细工作流
     **第1步：查询资料库**
     - 分析用户问题，提取关键词，并调用 `search_factory_knowledge` 工具进行查询。
 
     **第2步：回答问题**
     - **情况 A (查询内容足以回答问题)**：
       - 对查询结果进行清晰地整合与提取，直接回答用户。
-      - 回答需图文并茂。如果查询结果中包含相关的图片链接，请使用 Markdown 格式：`![示意图](图片链接)`，且图片必须紧跟在它所解释的段落或步骤之后。
-      - **注意**：只能使用系统提示中给出的 `http://localhost...` 链接，**绝对不要**输出 Base64 编码。
+      
     - **情况 B (未查到内容 或 内容不足以回答问题)**：
       - 严禁强行拼凑答案或使用自身预训练知识。
       - 请直接输出：“抱歉，该问题我暂时无法回答”。
-
-    ### 注意事项
-    1. **严禁编造**：不允许在查询工具返回的内容上增加无中生有的内容。你只能忠实于资料库提供内容。
-    2. **完整性与图文对应**：确保输出步骤的完整性；资料库步骤中配有的图片，回答时坚决不能遗漏。
-    3. **确定性**：如果用户的问题不清晰（例如只说了“怎么操作”或“介绍下产品”），请追问具体的操作界面名称或产品型号，不要盲目罗列。
+    
+    ### 图片输出
+    - 场景定义：只有用户的问题是**“介绍【筑视分拣】”**、**“介绍【筑视焊接】”**或**“介绍【筑视检测】”**的时候，你才需要输出图片，其他问题**绝对不允许**输出。
+    - 图文匹配：你具有视觉能力，需要仔细**审查图片内容**，提取图片中的文字，综合判断图片内容是否与用户需要你介绍的产品相匹配，输出匹配的图片。
+    - 输出格式：你需要先输出文字，最后再输出相关的图片。查询结果中包含相关的图片链接，请使用 Markdown 格式：`![示意图](图片链接)`。
+    - **特别注意**：只能使用系统提示中给出的 `http://localhost...` 链接，**绝对不要**输出 Base64 编码。
+    - **严令禁止**：如果提供的资料库检索结果中没有包含具体的图片 URL 链接，**严禁**自己捏造、猜测或生成任何 Markdown 格式的图片链接（如 ![图](url)）。
 
     ### 工具调用格式规范
     **你必须使用标准的 OpenAI Function Calling 格式。**
@@ -290,10 +292,13 @@ system_prompt = SystemMessage(content="""
     **严禁**输出 Base64 编码。
 
     ### 严令禁止
+    【严禁编造】：不允许在查询工具返回的内容上增加无中生有的内容。你只能忠实于资料库提供内容。
     【严令禁止伪造图片链接】在输出内容时，如果提供的资料库检索结果中没有包含具体的图片 URL 链接，**严禁**自己捏造、猜测或生成任何 Markdown 格式的图片链接（如 ![图](url)）。
-    【严令禁止告知用户资料库中没有图片】如果当前资料库中未提供功能的示意图或操作界面截图，在你的回答中**严禁**提醒用户资料库中没提供图片，只需要输出资料库中已有的文字内容即可
-    【严令禁止告知用户资料中未提供内容】你**不允许**输出类似下面的内容“注：当前资料中未提供【筑视分拣】的独立产品图示或更详细的技术参数。”，**不允许**告知用户资料中未提供什么内容
-
+    【严令禁止伪造视频链接】 在输出内容时，严禁自己编造视频链接
+    【严令禁止在回答中提到“资料库”】你的回答中不允许包含“根据资料库”、“资料库中未提供”等相关的描述，只需要输出内容回答用户问题，**绝对不允许**在回答中告知用户“资料库中未提供xxx内容”。
+    【严令禁止回答中包含“不提供图片”的表述】你的回答中不允许包含“注：当前资料库中未提供xxx的专属示意图，因此不输出图片及链接。”之类的表述
+    【严令禁止输出“注：...”】你的回答中不允许包含你自己添加“注”的内容，只需要输出用户回答用户问题的内容
+    
     ### 回答格式
     - 使用清晰易读的 Markdown 格式（如使用加粗、列表缩进等）。
     """)
@@ -316,6 +321,12 @@ async def call_model(state: AgentState):
 
     # 2. 执行中间件：处理图片 Base64
     messages_with_images = convert_to_multimodal_messages(messages)
+    for i, msg in enumerate(messages_with_images):
+        if hasattr(msg, 'content') and isinstance(msg.content, str):
+            if '<video_preview>' in msg.content:
+                messages_with_images[i].content = re.sub(
+                    r'<video_preview>[\s\S]*?</video_preview>', '', msg.content
+                ).strip()
     
     # ==================== [智能检测搜索次数] ====================
     search_count = 0  # 计数器
@@ -399,63 +410,135 @@ async def call_model(state: AgentState):
             if "<tool_call>" in str(response.content):
                 clean_content = re.sub(r"<tool_call>.*?</tool_call>", "", str(response.content), flags=re.DOTALL)
                 response.content = clean_content.strip()
-        # ==================== [视频预览卡片注入] ====================
-        # 当模型没有调用工具，说明这是发给用户的最终回答
+        # ==================== [清理伪造图片链接] ====================
         if not response.tool_calls:
             try:
-                print("==== 🎬 [Debug 视频注入] 启动 ====")
-                video_titles = set()
+                content_str = str(response.content)
                 
-                # 倒序遍历本轮的对话，寻找工具返回的资料库文本
-                for msg in reversed(messages):
-                    if isinstance(msg, HumanMessage):
-                        print("==== 🎬 [Debug 视频注入] 遇到用户提问，停止回溯 ====")
-                        break  # 只看本轮的
-                    
-                    # 打印当前消息的类型，看有没有找错
-                    print(f"==== 🎬 [Debug 视频注入] 正在检查消息，类型: {getattr(msg, 'type', type(msg))} ====")
-                    
-                    # 更稳妥的判断方式：兼容属性和类名
-                    if getattr(msg, 'type', '') == 'tool' or msg.__class__.__name__ == 'ToolMessage':
-                        import re
-                        matches = re.findall(r'来源视频：《(.*?)》', str(msg.content))
-                        print(f"==== 🎬 [Debug 视频注入] 从 Tool 提取到的标题列表: {matches} ====")
-                        for m in matches:
-                            video_titles.add(m)
+                # 提取所有 Markdown 图片链接
+                img_pattern = re.findall(r'!\[.*?\]\((.*?)\)', content_str)
                 
-                print(f"==== 🎬 [Debug 视频注入] 去重后，准备去元数据寻找的标题: {video_titles} ====")
+                for img_url in img_pattern:
+                    if img_url.startswith('/images') or 'localhost' in img_url or '172.24.26.11' in img_url:
+                        filename = img_url.split('/')[-1]
+                        local_path = os.path.join(IMAGES_DIR, filename)
+                        
+                        print(f"🔍 [图片清理] 检测到图片链接: {img_url}")
+                        print(f"🔍 [图片清理] 本地路径: {local_path}")
+                        print(f"🔍 [图片清理] 文件是否存在: {os.path.exists(local_path)}")
+                        
+                        if not os.path.exists(local_path):
+                            print(f"🚫 [图片清理] 文件不存在，删除链接: {img_url}")
+                            content_str = re.sub(
+                                r'!\[.*?\]\(' + re.escape(img_url) + r'\)',
+                                '',
+                                content_str
+                            ).strip()
                 
-                if video_titles:
+                response.content = content_str
+
+            except Exception as e:
+                print(f"⚠️ [图片清理失败] {e}")
+        # ==========================================================
+        clean_content = re.sub(
+            r'\n*[（(]\s*注[：:][^）)]*[）)]\s*',  # 匹配（注：...）格式
+            '',
+            str(response.content)
+        ).strip()
+        clean_content = re.sub(
+            r'\n*注[：:].*',  # 匹配"注：..."到行尾格式
+            '',
+            clean_content,
+            flags=re.DOTALL
+        ).strip()
+        response.content = clean_content
+        # ==================== [视频预览卡片注入] ====================
+        if not response.tool_calls:
+            try:
+                last_human_msg = next(
+                    (m for m in reversed(messages) if isinstance(m, HumanMessage)), None
+                )
+                last_human_content = str(last_human_msg.content) if last_human_msg else ""
+
+                # ✅ 操作指导话题直接跳过，不注入视频
+                if "无序识配" in last_human_content or "你画我拼" in last_human_content:
+                    print("==== 🎬 [Debug 视频注入] 操作指导话题，跳过视频注入 ====")
+                    return {"messages": [response]}
+
+                # ✅ 根据用户问题直接映射视频标题
+                video_title_map = {
+                    "筑视分拣": "筑视智能分拣系统",
+                    "筑视焊接": "筑视智能焊接系统",
+                    "筑视检测": "筑视智能检测系统",
+                }
+
+                target_video_title = None
+                for keyword, title in video_title_map.items():
+                    if keyword in last_human_content:
+                        target_video_title = title
+                        break
+
+                if target_video_title:
                     videos = load_metadata()
-                    print(f"==== 🎬 [Debug 视频注入] 成功读取元数据，共有 {len(videos) if videos else 0} 个视频 ====")
-                    
-                    video_blocks = []
-                    for title in video_titles:
-                        matched_video = next((v for v in videos if v.get("title") == title), None)
-                        if matched_video:
-                            print(f"==== 🎬 [Debug 视频注入] ✅ 成功匹配到视频: {title} ====")
-                            video_info = {
-                                "id": matched_video.get("id"),
-                                "title": matched_video.get("title"),
-                                "url": matched_video.get("url"),
-                                "thumbnail": matched_video.get("thumbnail"),
-                                "duration": matched_video.get("duration")
-                            }
-                            video_json = json.dumps(video_info, ensure_ascii=False)
-                            video_blocks.append(f"<video_preview>{video_json}</video_preview>")
-                        else:
-                            # 如果执行到这里，说明是你 json 里的名字和文档里的名字没对上！
-                            print(f"==== 🎬 [Debug 视频注入] ❌ 警告：元数据中找不到 title 完全等于 '{title}' 的视频！====")
-                
-                if video_blocks:
-                    print("==== 🎬 [Debug 视频注入] 开始拼接到大模型回答末尾 ====")
-                    appendix = "\n\n---\n**🎬 产品介绍视频：**\n" + "\n".join(video_blocks)
-                    response.content = str(response.content) + appendix
+                    matched_video = next((v for v in videos if v.get("title") == target_video_title), None)
+                    if matched_video:
+                        print(f"==== 🎬 [Debug 视频注入] ✅ 匹配到视频: {target_video_title} ====")
+                        video_info = {
+                            "id": matched_video.get("id"),
+                            "title": matched_video.get("title"),
+                            "url": matched_video.get("url"),
+                            "thumbnail": matched_video.get("thumbnail"),
+                            "duration": matched_video.get("duration")
+                        }
+                        video_json = json.dumps(video_info, ensure_ascii=False)
+                        # ✅ 先清理掉 content 里已有的视频块，防止重复
+                        clean_content = re.sub(r'<video_preview>[\s\S]*?</video_preview>', '', str(response.content)).strip()
+                        
+                        response.content = clean_content + f"<video_preview>{video_json}</video_preview>"
+                    else:
+                        print(f"==== 🎬 [Debug 视频注入] ❌ 元数据中找不到标题: {target_video_title} ====")
                 else:
-                    print("==== 🎬 [Debug 视频注入] 注入跳过：最终没有生成任何视频模块。 ====")
+                    print("==== 🎬 [Debug 视频注入] 非产品介绍话题，跳过视频注入 ====")
 
             except Exception as e:
                 print(f"⚠️ [增强失败] 视频链接注入出错: {e}")
+        # ==========================================================
+        # ==================== [PDF 链接注入] ====================
+        if not response.tool_calls:
+            try:
+                print("==== 📄 [PDF注入] 开始执行 ====")
+                
+                last_human_msg = next(
+                    (m for m in reversed(messages) if isinstance(m, HumanMessage)), None
+                )
+                last_human_content = str(last_human_msg.content) if last_human_msg else ""
+                print(f"==== 📄 [PDF注入] 用户最后一条消息: {last_human_content[:100]} ====")
+
+                is_operation_topic = "无序识配" in last_human_content or "你画我拼" in last_human_content
+                is_first_intro = any(
+                    f"介绍【{kw}】" in last_human_content
+                    for kw in ["筑视分拣", "筑视焊接", "筑视检测"]
+                )
+                print(f"==== 📄 [PDF注入] is_operation_topic: {is_operation_topic}, is_first_intro: {is_first_intro} ====")
+
+                if not is_operation_topic and not is_first_intro:
+                    print("==== 📄 [PDF注入] 条件满足，准备注入 ====")
+                    pdf_appendix = "\n\n---\n了解更多产品内容请点击下方链接：\n[华工科技筑视产品宣传册](http://172.24.26.11:8000/pdfs/华工科技筑视产品宣传册.pdf)"
+                    clean_content = re.sub(
+                        r'\n*了解更多.*?\[.*?\]\(.*?\.pdf\)',
+                        '', str(response.content), flags=re.DOTALL
+                    ).strip()
+                    response.content = clean_content + pdf_appendix
+                    print("==== 📄 [PDF注入] ✅ 注入完成 ====")
+                else:
+                    print("==== 📄 [PDF注入] ❌ 条件不满足，跳过注入 ====")
+
+            except Exception as e:
+                print(f"⚠️ [PDF注入失败] 错误详情: {e}")
+                import traceback
+                traceback.print_exc()
+        else:
+            print("==== 📄 [PDF注入] 跳过：response有tool_calls ====")
         # ==========================================================
         print("✅ [Agent 动作] 大模型思考完成")
         return {"messages": [response]}
@@ -605,6 +688,8 @@ async def chat_stream(message: str, thread_id: str, temp_context: dict = None):
         input_message = HumanMessage(content=content_to_send)
 
         # 调用 graph
+        stream_buffer = ""
+
         async for event in graph.astream_events(
             {"messages": [input_message]}, 
             config=config,
@@ -616,12 +701,46 @@ async def chat_stream(message: str, thread_id: str, temp_context: dict = None):
             if event["event"] == "on_chat_model_stream":
                 content = event["data"]["chunk"].content
                 if content:
-                    # 过滤 XML 标签
-                    if isinstance(content, str) and ("<tool_call>" in content or "<function=" in content): 
+                    if isinstance(content, str) and ("<tool_call>" in content or "<function=" in content):
                         continue
-                    has_yielded = True
-                    yield content
-            
+                    if isinstance(content, str) and "<video_preview>" in content:
+                        continue
+
+                    stream_buffer += content
+
+                    # 有未闭合的图片链接，等待完整再处理
+                    if "![" in stream_buffer and ")" not in stream_buffer.split("![")[-1]:
+                        continue
+
+                    # 有未闭合的括号注释，等待完整再处理
+                    if re.search(r'[（(]\s*注[：:](?![^）)]*[）)])', stream_buffer):
+                        continue
+
+                    # 过滤伪造图片链接
+                    if "![" in stream_buffer:
+                        def is_valid_img(url):
+                            if url.startswith('/images') or 'localhost' in url or '172.24.26.11' in url:
+                                filename = url.split('/')[-1]
+                                exists = os.path.exists(os.path.join(IMAGES_DIR, filename))
+                                if not exists:
+                                    print(f"🚫 [流式图片过滤] 伪造链接已拦截: {url}")
+                                return exists
+                            return True
+                        stream_buffer = re.sub(
+                            r'!\[.*?\]\((.*?)\)',
+                            lambda m: m.group(0) if is_valid_img(m.group(1)) else '',
+                            stream_buffer
+                        )
+
+                    # ✅ 过滤"注："内容
+                    stream_buffer = re.sub(r'[（(]\s*注[：:][^）)]*[）)]', '', stream_buffer)
+                    stream_buffer = re.sub(r'\n注[：:].*', '', stream_buffer, flags=re.DOTALL)
+
+                    if stream_buffer:
+                        has_yielded = True
+                        yield stream_buffer
+                        stream_buffer = ""
+
             # ------------------------------------------------------
             # 2. 捕获大模型非流式结果
             # ------------------------------------------------------
@@ -648,6 +767,33 @@ async def chat_stream(message: str, thread_id: str, temp_context: dict = None):
                         print(f"⚡ [Chat] 捕获到系统拦截消息: {last_msg.content[:20]}...")
                         has_yielded = True
                         yield last_msg.content
+
+        # 循环结束后清空缓冲区
+        if stream_buffer:
+            # 最后再过滤一次
+            stream_buffer = re.sub(r'[（(]\s*注[：:][^）)]*[）)]', '', stream_buffer)
+            stream_buffer = re.sub(r'\n注[：:].*', '', stream_buffer, flags=re.DOTALL)
+            if stream_buffer.strip():
+                yield stream_buffer
+
+        final_state = await graph.aget_state(config)
+        if final_state and final_state.values.get("messages"):
+            last_msg = final_state.values["messages"][-1]
+            last_content = str(last_msg.content) if isinstance(last_msg, AIMessage) else ""
+
+            # 追加视频块
+            if "<video_preview>" in last_content:
+                video_start = last_content.find("<video_preview>")
+                video_part = last_content[video_start:]
+                print(f"🎬 [Chat] 循环结束后追加视频块")
+                yield video_part
+
+            # 追加 PDF 链接
+            if "了解更多产品内容请点击下方链接" in last_content:
+                pdf_start = last_content.find("\n\n---\n了解更多产品内容请点击下方链接")
+                pdf_part = last_content[pdf_start:]
+                print(f"📄 [Chat] 循环结束后追加PDF链接")
+                yield pdf_part
 
     except Exception as e:
         error_msg = f"\n\n❌ 对话处理失败: {str(e)}\n"

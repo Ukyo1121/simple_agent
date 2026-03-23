@@ -38,7 +38,10 @@ services:
       # 挂载数据目录，确保上传的文件和图片持久化
       - ./factory_docs:/app/factory_docs
       - ./factory_images:/app/factory_images
+      - ./training_thumbnails:/app/training_thumbnails
+      - ./training_videos:/app/training_videos
       - ./unanswered_questions.json:/app/unanswered_questions.json
+      - ./training_videos_metadata.json:/app/training_videos_metadata.json
       # 挂载模型目录
       - ./models:/app/models
     environment:
@@ -54,7 +57,8 @@ services:
 
   # 3. 前端服务
   frontend:
-    image: factory_agent-frontend:latest
+    context: ./factory-chat-ui 
+    dockerfile: Dockerfile.frontend
     container_name: factory_frontend
     ports:
       - "80:80"
